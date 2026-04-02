@@ -21,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from inference import greedy_action
 from models import CropAction, CropObservation, CropState
 from server.environment import CropEnvironment
+from server.grader import grade_episode
 from server.reward import compute_delta_reward, compute_step_reward
 from training_adapter import discrete_to_crop_action, list_discrete_actions
 
@@ -44,6 +45,43 @@ def _run_episode(task_id: int, seed: int = SEED) -> tuple[float, int]:
         steps += 1
 
     return obs.reward, steps
+
+
+def _run_policy_episode(task_id: int, policy, seed: int = SEED) -> tuple[float, dict]:
+    """Run a full episode with a supplied policy callback."""
+    env = CropEnvironment()
+    obs = env.reset(seed=seed, task_id=task_id)
+
+    fert_done = set()
+    while not obs.done:
+        action_dict = policy(obs, fert_done)
+        obs = env.step(CropAction(**action_dict))
+
+    return obs.reward or 0.0, obs.metadata.get("grade_breakdown", {})
+
+
+def _wait_only_policy(obs, fert_done: set) -> dict:
+    return {"action_type": "wait", "amount": 0.0}
+
+
+def _no_fertilizer_policy(obs, fert_done: set) -> dict:
+    action = greedy_action(obs, fert_done)
+    if action["action_type"] == "fertilize":
+        return {"action_type": "wait", "amount": 0.0}
+    return action
+
+
+def _extra_fertilizer_policy(obs, fert_done: set) -> dict:
+    dvs = obs.crop_status.get("dvs", 0.0)
+    budget_remaining = obs.resources_used.get("budget_remaining", 0.0)
+    fert_cost = obs.resources_used.get("fertilizer_cost_per_kg", 1.5)
+
+    if 0.24 <= dvs <= 0.36 and budget_remaining >= fert_cost * 8.0:
+        return {"action_type": "fertilize", "amount": 8.0}
+    if 0.54 <= dvs <= 0.66 and budget_remaining >= fert_cost * 8.0:
+        return {"action_type": "fertilize", "amount": 8.0}
+
+    return greedy_action(obs, fert_done)
 
 
 # -----------------------------------------------------------------------
@@ -342,3 +380,93 @@ def test_probe_dense_reward_and_final_grade_are_directionally_aligned():
 
     assert wait_dense >= irrigate_dense
     assert wait_final >= irrigate_final
+
+
+def test_greedy_policy_consistently_beats_wait_only_policy():
+    """A passive policy should trail the greedy baseline on all public tasks."""
+    for task_id in (1, 2, 3):
+        greedy_score, _ = _run_policy_episode(task_id, greedy_action)
+        wait_score, breakdown = _run_policy_episode(task_id, _wait_only_policy)
+
+        assert breakdown["timing_quality"] == pytest.approx(0.2)
+        assert greedy_score > wait_score + 0.08
+
+
+def test_skipping_fertilizer_remains_worse_than_greedy_policy():
+    """Removing fertilizer decisions should clearly reduce final score quality."""
+    for task_id in (1, 2, 3):
+        greedy_score, greedy_breakdown = _run_policy_episode(task_id, greedy_action)
+        no_fert_score, no_fert_breakdown = _run_policy_episode(task_id, _no_fertilizer_policy)
+
+        assert no_fert_breakdown["timing_quality"] == pytest.approx(0.2)
+        assert no_fert_breakdown["total_n"] == pytest.approx(0.0)
+        assert greedy_breakdown["timing_quality"] > no_fert_breakdown["timing_quality"]
+        assert greedy_score > no_fert_score + 0.05
+
+
+def test_extra_fertilizer_policy_does_not_beat_greedy_baseline():
+    """Adding extra fertilizer around the timing windows should not outperform greedy."""
+    for task_id in (1, 2, 3):
+        greedy_score, _ = _run_policy_episode(task_id, greedy_action)
+        extra_score, _ = _run_policy_episode(task_id, _extra_fertilizer_policy)
+
+        assert greedy_score >= extra_score - 1e-9
+
+
+def test_late_harvest_penalty_hits_floor_after_dvs_23():
+    """Late harvest timing should bottom out at the documented 0.5 floor."""
+    score_205, breakdown_205 = grade_episode(
+        actual_yield=6000.0,
+        target_yield=6500.0,
+        total_water=40.0,
+        total_n=35.0,
+        total_cost=400.0,
+        budget=800.0,
+        harvest_dvs=2.05,
+        harvested=True,
+        actions_taken=[],
+        task_id=1,
+    )
+    score_210, breakdown_210 = grade_episode(
+        actual_yield=6000.0,
+        target_yield=6500.0,
+        total_water=40.0,
+        total_n=35.0,
+        total_cost=400.0,
+        budget=800.0,
+        harvest_dvs=2.10,
+        harvested=True,
+        actions_taken=[],
+        task_id=1,
+    )
+    score_230, breakdown_230 = grade_episode(
+        actual_yield=6000.0,
+        target_yield=6500.0,
+        total_water=40.0,
+        total_n=35.0,
+        total_cost=400.0,
+        budget=800.0,
+        harvest_dvs=2.30,
+        harvested=True,
+        actions_taken=[],
+        task_id=1,
+    )
+    score_260, breakdown_260 = grade_episode(
+        actual_yield=6000.0,
+        target_yield=6500.0,
+        total_water=40.0,
+        total_n=35.0,
+        total_cost=400.0,
+        budget=800.0,
+        harvest_dvs=2.60,
+        harvested=True,
+        actions_taken=[],
+        task_id=1,
+    )
+
+    assert breakdown_205["harvest_timing"] == pytest.approx(1.0)
+    assert breakdown_210["harvest_timing"] == pytest.approx(0.9)
+    assert breakdown_230["harvest_timing"] == pytest.approx(0.5)
+    assert breakdown_260["harvest_timing"] == pytest.approx(0.5)
+    assert score_205 > score_210 > score_230
+    assert score_230 == pytest.approx(score_260)
