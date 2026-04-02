@@ -302,6 +302,18 @@ ENV_URL=http://localhost:7860 python inference.py
 python -m pytest tests/test_smoke.py -q
 ```
 
+Quick greedy multi-seed benchmark:
+
+```bash
+python benchmark_sweep.py --start-seed 42 --count 10
+```
+
+Optional JSON output for scripting:
+
+```bash
+python benchmark_sweep.py --start-seed 42 --count 10 --json
+```
+
 Current test coverage includes:
 
 - environment reset/step/state basics
@@ -315,8 +327,10 @@ Current test coverage includes:
 - discrete training adapter mapping
 - budget exhaustion handling
 - directional alignment between probe dense reward and terminal grade
+- passive-policy and extra-fertilizer regression checks
+- late-harvest boundary regression checks
 
-The current smoke suite has **22 passing tests**.
+The current smoke suite has **26 passing tests**.
 
 ## Internal RL Utilities
 
