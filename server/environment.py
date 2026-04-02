@@ -23,8 +23,12 @@ from openenv.core.env_server.interfaces import Environment
 from models import CropAction, CropObservation, CropState
 from server.crop_sim import CropSimulator
 from server.grader import grade_episode
-from server.reward import compute_step_reward, compute_trajectory_reward
-from server.scenarios import generate_scenario
+from server.reward import (
+    compute_delta_reward,
+    compute_step_reward,
+    compute_trajectory_reward,
+)
+from server.scenarios import generate_probe_scenario, generate_scenario
 from server.tasks import TASKS, get_task_definition
 
 
@@ -52,10 +56,15 @@ class CropEnvironment(
         **kwargs: Any,
     ) -> CropObservation:
         task_id: int = kwargs.get("task_id", 1)
+        probe_name: Optional[str] = kwargs.get("probe_name")
         task = get_task_definition(task_id)
         actual_seed = seed if seed is not None else 42
 
-        scenario = generate_scenario(actual_seed, task_id)
+        scenario = (
+            generate_probe_scenario(actual_seed, probe_name)
+            if probe_name
+            else generate_scenario(actual_seed, task_id)
+        )
         self._scenario = scenario
 
         # Create simulator
@@ -66,29 +75,34 @@ class CropEnvironment(
             partition_table=scenario["partition_table"],
         )
 
+        self._apply_start_state_overrides(scenario)
+
         self._state = CropState(
             episode_id=episode_id or str(uuid.uuid4()),
             step_count=0,
             current_task_id=task_id,
             seed=actual_seed,
-            current_day=0,
+            current_day=self._sim.current_day,
             total_days=scenario["max_duration"],
             crop_name=scenario["crop_name"],
-            dvs=0.0,
+            dvs=round(self._sim.dvs, 4),
             lai=self._sim.lai,
-            tagp=0.0,
-            twso=0.0,
+            tagp=round(self._sim.tagp, 1),
+            twso=round(self._sim.twso, 1),
             sm=self._sim.sm,
-            total_water_applied=0.0,
-            total_n_applied=0.0,
+            total_water_applied=round(self._sim.total_water, 2),
+            total_n_applied=round(self._sim.total_n, 2),
             total_cost=0.0,
             budget=scenario["budget"],
             actions_taken=[],
             harvested=False,
             harvest_dvs=0.0,
+            last_irrigation_day=None,
+            last_fertilization_day=None,
+            fertilizer_events_count=0,
         )
 
-        return self._build_observation(task)
+        return self._build_observation(task, metadata=self._step_metadata())
 
     def step(
         self,
@@ -160,6 +174,13 @@ class CropEnvironment(
             n_kg = 0.0
 
         # Record action
+        current_day = self._sim.current_day
+        if action_type == "irrigate" and irrig_cm > 0.0:
+            self._state.last_irrigation_day = current_day
+        elif action_type == "fertilize" and n_kg > 0.0:
+            self._state.last_fertilization_day = current_day
+            self._state.fertilizer_events_count += 1
+
         action_record = {
             "step": self._state.step_count,
             "action_type": action_type,
@@ -194,23 +215,57 @@ class CropEnvironment(
             self._sync_state()
             return self._build_observation(
                 task, done=True, reward=final_reward,
-                conflicts=conflicts, metadata={"grade_breakdown": breakdown},
+                conflicts=conflicts,
+                metadata={
+                    **self._step_metadata(),
+                    "grade_breakdown": breakdown,
+                },
             )
 
-        # Compute step reward before advancing
-        step_reward = compute_step_reward(
+        # Compute intent reward before advancing
+        forecast_rain_3d = sum(
+            day["rain"]
+            for day in self._sim.get_weather_forecast(self._sim.current_day + 1, n_days=3)
+        )
+        intent_reward = compute_step_reward(
             action_type=action_type,
             dvs=self._sim.dvs,
             sm=self._sim.sm,
+            amount=amount,
             cost=cost,
             budget_remaining=budget_remaining,
+            total_n=self._sim.total_n,
+            forecast_rain=forecast_rain_3d,
+            root_zone_depth_cm=scenario["soil_params"].rooting_depth_mm / 10.0,
         )
+
+        pre_sm = self._sim.sm
+        pre_water_stress = self._sim._water_stress()
+        pre_n_availability = self._sim.n_factor
 
         # Advance simulation
         step_days = scenario["step_days"]
         self._sim.advance(step_days, irrigation_cm=irrig_cm, n_kg_ha=n_kg)
         self._state.total_cost += cost
         self._sync_state()
+
+        delta_reward = compute_delta_reward(
+            action_type=action_type,
+            pre_sm=pre_sm,
+            post_sm=self._sim.sm,
+            pre_water_stress=pre_water_stress,
+            post_water_stress=self._sim._water_stress(),
+            pre_n_availability=pre_n_availability,
+            post_n_availability=self._sim.n_factor,
+            cost=cost,
+            budget_remaining=budget_remaining,
+        )
+        step_reward = 0.4 * intent_reward + 0.6 * delta_reward
+        step_metadata = self._step_metadata(
+            intent_reward=intent_reward,
+            delta_reward=delta_reward,
+            step_reward=step_reward,
+        )
 
         # Check termination conditions
         is_done = False
@@ -252,11 +307,19 @@ class CropEnvironment(
             final_reward = compute_trajectory_reward(grade)
             return self._build_observation(
                 task, done=True, reward=final_reward,
-                conflicts=conflicts, metadata={"grade_breakdown": breakdown},
+                conflicts=conflicts,
+                metadata={
+                    **step_metadata,
+                    "grade_breakdown": breakdown,
+                },
             )
 
         return self._build_observation(
-            task, done=False, reward=step_reward, conflicts=conflicts,
+            task,
+            done=False,
+            reward=step_reward,
+            conflicts=conflicts,
+            metadata=step_metadata,
         )
 
     @property
@@ -280,6 +343,47 @@ class CropEnvironment(
         self._state.total_water_applied = round(self._sim.total_water, 2)
         self._state.total_n_applied = round(self._sim.total_n, 2)
 
+    def _apply_start_state_overrides(self, scenario: dict[str, Any]) -> None:
+        if self._sim is None:
+            return
+
+        start_at_dvs = scenario.get("start_at_dvs")
+        if start_at_dvs is not None:
+            while (
+                self._sim.dvs < start_at_dvs
+                and self._sim.current_day < scenario["max_duration"]
+                and self._sim.dvs < 2.0
+            ):
+                self._sim.advance(1)
+
+        if "override_sm" in scenario:
+            field_capacity = scenario["soil_params"].field_capacity
+            wilting_point = scenario["soil_params"].wilting_point
+            self._sim.sm = max(wilting_point, min(field_capacity + 0.05, scenario["override_sm"]))
+
+        if "override_n_factor" in scenario:
+            self._sim.n_factor = max(0.3, min(1.0, scenario["override_n_factor"]))
+
+    def _step_metadata(
+        self,
+        intent_reward: float | None = None,
+        delta_reward: float | None = None,
+        step_reward: float | None = None,
+    ) -> dict[str, Any]:
+        metadata: dict[str, Any] = {}
+        probe_name = self._scenario.get("probe_name")
+        if probe_name:
+            metadata["probe_name"] = probe_name
+            metadata["probe_notes"] = self._scenario.get("probe_notes", "")
+
+        if intent_reward is not None or delta_reward is not None or step_reward is not None:
+            metadata["reward_breakdown"] = {
+                "intent_reward": round(intent_reward or 0.0, 4),
+                "delta_reward": round(delta_reward or 0.0, 4),
+                "step_reward": round(step_reward or 0.0, 4),
+            }
+        return metadata
+
     def _build_observation(
         self,
         task: dict,
@@ -298,8 +402,45 @@ class CropEnvironment(
         weather_forecast = sim.get_weather_forecast(
             sim.current_day + 1, n_days=5
         )
+        extended_forecast = sim.get_weather_forecast(
+            sim.current_day + 1, n_days=7
+        )
 
         budget_remaining = self._state.budget - self._state.total_cost
+        target_sm = 0.30
+        if sim.sm < 0.28:
+            moisture_gap_to_target = round(0.28 - sim.sm, 3)
+        elif sim.sm > 0.32:
+            moisture_gap_to_target = round(0.32 - sim.sm, 3)
+        else:
+            moisture_gap_to_target = 0.0
+
+        forecast_rain_3d = round(sum(day["rain"] for day in weather_forecast[:3]), 2)
+        forecast_rain_7d = round(sum(day["rain"] for day in extended_forecast[:7]), 2)
+        days_since_last_irrigation = (
+            sim.current_day - self._state.last_irrigation_day
+            if self._state.last_irrigation_day is not None
+            else sim.current_day
+        )
+        days_since_last_fertilization = (
+            sim.current_day - self._state.last_fertilization_day
+            if self._state.last_fertilization_day is not None
+            else sim.current_day
+        )
+
+        if sim.dvs < 0.20:
+            dvs_distance_to_next_window = round(0.20 - sim.dvs, 3)
+        elif 0.20 <= sim.dvs <= 0.40 or 0.50 <= sim.dvs <= 0.70:
+            dvs_distance_to_next_window = 0.0
+        elif sim.dvs < 0.50:
+            dvs_distance_to_next_window = round(0.50 - sim.dvs, 3)
+        else:
+            dvs_distance_to_next_window = round(max(0.0, sim.dvs - 0.70), 3)
+
+        estimated_budget_to_finish = round(
+            max(0.0, (forecast_rain_7d < 1.0) * 12.0 + (sim.n_factor < 0.6) * 18.0),
+            2,
+        )
 
         return CropObservation(
             done=done,
@@ -346,6 +487,21 @@ class CropEnvironment(
                 "target_yield": round(scenario["target_yield"], 1),
                 "budget": scenario["budget"],
                 "step_days": scenario["step_days"],
+                "probe_name": scenario.get("probe_name"),
+            },
+            control_features={
+                "moisture_gap_to_target": moisture_gap_to_target,
+                "forecast_rain_3d": forecast_rain_3d,
+                "forecast_rain_7d": forecast_rain_7d,
+                "days_since_last_irrigation": days_since_last_irrigation,
+                "days_since_last_fertilization": days_since_last_fertilization,
+                "fertilizer_events_count": self._state.fertilizer_events_count,
+                "cumulative_n_applied": round(sim.total_n, 2),
+                "estimated_budget_to_finish": estimated_budget_to_finish,
+                "budget_remaining_ratio": round(
+                    budget_remaining / max(self._state.budget, 1.0), 3
+                ),
+                "dvs_distance_to_next_fertilizer_window": dvs_distance_to_next_window,
             },
             conflicts=conflicts or [],
         )

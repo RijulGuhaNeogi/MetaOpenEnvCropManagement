@@ -18,6 +18,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from models import CropAction, CropObservation, CropState
 from server.environment import CropEnvironment
+from server.reward import compute_delta_reward, compute_step_reward
+from training_adapter import discrete_to_crop_action, list_discrete_actions
 
 
 SEED = 42
@@ -162,3 +164,140 @@ def test_difficulty_ordering():
     assert scores[2] >= scores[3], (
         f"Medium ({scores[2]:.4f}) should score >= Hard ({scores[3]:.4f})"
     )
+
+
+def test_observation_includes_control_features():
+    """Observation should expose derived control features for RL policies."""
+    env = CropEnvironment()
+    obs = env.reset(seed=SEED, task_id=1)
+
+    assert "moisture_gap_to_target" in obs.control_features
+    assert "forecast_rain_3d" in obs.control_features
+    assert "forecast_rain_7d" in obs.control_features
+    assert "days_since_last_irrigation" in obs.control_features
+    assert "dvs_distance_to_next_fertilizer_window" in obs.control_features
+
+
+def test_irrigation_reward_prefers_moderate_dose():
+    """A moderate irrigation dose should beat a wasteful large dose in dry soil."""
+    moderate = compute_step_reward(
+        action_type="irrigate",
+        dvs=0.4,
+        sm=0.24,
+        amount=2.5,
+        cost=5.0,
+        budget_remaining=100.0,
+        forecast_rain=0.0,
+    )
+    wasteful = compute_step_reward(
+        action_type="irrigate",
+        dvs=0.4,
+        sm=0.24,
+        amount=8.0,
+        cost=16.0,
+        budget_remaining=100.0,
+        forecast_rain=0.0,
+    )
+    assert moderate > wasteful
+
+
+def test_fertilizer_reward_prefers_sensible_dose_in_window():
+    """A sensible fertilizer dose in the correct window should beat excess."""
+    sensible = compute_step_reward(
+        action_type="fertilize",
+        dvs=0.30,
+        sm=0.30,
+        amount=18.0,
+        cost=27.0,
+        budget_remaining=100.0,
+        total_n=10.0,
+    )
+    excessive = compute_step_reward(
+        action_type="fertilize",
+        dvs=0.30,
+        sm=0.30,
+        amount=50.0,
+        cost=75.0,
+        budget_remaining=100.0,
+        total_n=10.0,
+    )
+    assert sensible > excessive
+
+
+def test_delta_reward_is_positive_for_stress_relief():
+    """Post-transition reward should be positive when stress is clearly relieved."""
+    reward = compute_delta_reward(
+        action_type="irrigate",
+        pre_sm=0.19,
+        post_sm=0.24,
+        pre_water_stress=0.45,
+        post_water_stress=0.72,
+        pre_n_availability=0.55,
+        post_n_availability=0.55,
+        cost=5.0,
+        budget_remaining=100.0,
+    )
+    assert reward > 0.0
+
+
+def test_wait_actions_do_not_accumulate_positive_dense_reward():
+    """Wait actions should remain neutral on dense reward before terminal grading."""
+    env = CropEnvironment()
+    obs = env.reset(seed=SEED, task_id=1)
+
+    dense_rewards = []
+    for _ in range(3):
+        obs = env.step(CropAction(action_type="wait", amount=0.0))
+        dense_rewards.append(obs.reward)
+        if obs.done:
+            break
+
+    assert all(reward <= 0.0 for reward in dense_rewards)
+
+
+def test_step_metadata_includes_reward_breakdown():
+    """Dense-reward observations should expose reward components in metadata."""
+    env = CropEnvironment()
+    env.reset(seed=SEED, task_id=1)
+
+    obs = env.step(CropAction(action_type="wait", amount=0.0))
+    assert "reward_breakdown" in obs.metadata
+    assert "intent_reward" in obs.metadata["reward_breakdown"]
+    assert "delta_reward" in obs.metadata["reward_breakdown"]
+
+
+def test_probe_scenario_can_be_loaded_internally():
+    """Internal probe scenarios should be available via reset kwargs."""
+    env = CropEnvironment()
+    obs = env.reset(seed=SEED, task_id=1, probe_name="over_irrigation_trap")
+
+    assert obs.metadata.get("probe_name") == "over_irrigation_trap"
+    assert obs.season_summary.get("probe_name") == "over_irrigation_trap"
+    assert obs.soil_status["sm"] >= 0.35
+
+
+def test_harvest_hesitation_probe_starts_near_maturity():
+    """The harvest hesitation probe should start close to the harvest window."""
+    env = CropEnvironment()
+    obs = env.reset(seed=SEED, task_id=1, probe_name="harvest_hesitation")
+
+    assert obs.metadata.get("probe_name") == "harvest_hesitation"
+    assert obs.crop_status["dvs"] >= 1.7
+
+
+def test_training_adapter_maps_discrete_actions():
+    """Discrete training actions should map to valid public CropAction values."""
+    action = discrete_to_crop_action("irrigate_medium")
+    assert action.action_type == "irrigate"
+    assert action.amount == 5.0
+
+    harvest = discrete_to_crop_action("harvest")
+    assert harvest.action_type == "harvest"
+    assert harvest.amount == 0.0
+
+
+def test_training_adapter_lists_expected_actions():
+    """The discrete training action list should expose the supported buckets."""
+    actions = list_discrete_actions()
+    assert actions[0] == "wait"
+    assert "fertilize_large" in actions

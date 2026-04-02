@@ -56,6 +56,7 @@ class CropObservation(Observation):
     weather_forecast: list[dict[str, Any]] = Field(default_factory=list)
     resources_used: dict[str, Any] = Field(default_factory=dict)
     season_summary: dict[str, Any] = Field(default_factory=dict)
+    control_features: dict[str, Any] = Field(default_factory=dict)
     conflicts: list[str] = Field(default_factory=list)
 
 
@@ -93,3 +94,6 @@ class CropState(State):
     actions_taken: list[dict[str, Any]] = Field(default_factory=list)
     harvested: bool = False
     harvest_dvs: float = 0.0           # DVS at time of harvest
+    last_irrigation_day: Optional[int] = None
+    last_fertilization_day: Optional[int] = None
+    fertilizer_events_count: int = 0

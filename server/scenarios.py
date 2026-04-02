@@ -153,6 +153,48 @@ LOCATIONS = {
 }
 
 
+PROBE_SCENARIOS = {
+    "over_irrigation_trap": {
+        "task_id": 1,
+        "budget": 250.0,
+        "override_sm": 0.39,
+        "force_forecast_rain": [1.1, 0.9, 0.7, 0.5, 0.4],
+        "notes": "Soil already wet and rain is coming; irrigation should look unattractive.",
+    },
+    "late_fertilizer_temptation": {
+        "task_id": 2,
+        "start_at_dvs": 1.18,
+        "override_n_factor": 0.52,
+        "budget": 160.0,
+        "notes": "Nitrogen looks low, but the crop is already too late for a profitable top-dress.",
+    },
+    "budget_starvation": {
+        "task_id": 3,
+        "start_at_dvs": 0.42,
+        "override_sm": 0.18,
+        "override_n_factor": 0.50,
+        "budget": 32.0,
+        "notes": "Budget only covers one meaningful intervention; waste is immediately punished.",
+    },
+    "harvest_hesitation": {
+        "task_id": 1,
+        "start_at_dvs": 1.76,
+        "override_sm": 0.30,
+        "budget": 120.0,
+        "notes": "Crop is near maturity; delaying harvest should be an obvious mistake.",
+    },
+    "drought_rescue": {
+        "task_id": 3,
+        "start_at_dvs": 0.58,
+        "override_sm": 0.12,
+        "override_n_factor": 0.72,
+        "budget": 140.0,
+        "force_forecast_rain": [0.0, 0.0, 0.0, 0.1, 0.0],
+        "notes": "Mid-season drought with enough budget to rescue the crop if irrigation is used well.",
+    },
+}
+
+
 # ---------------------------------------------------------------------------
 # Scenario generation
 # ---------------------------------------------------------------------------
@@ -189,6 +231,37 @@ def generate_scenario(seed: int, task_id: int) -> dict[str, Any]:
         return _generate_medium(rng, seed, universal_target)
     else:
         return _generate_hard(rng, seed, universal_target)
+
+
+def generate_probe_scenario(seed: int, probe_name: str) -> dict[str, Any]:
+    """Generate an internal probe scenario for RL diagnostics.
+
+    Probe scenarios are not public tasks. They modify the initial state or short
+    weather horizon to expose specific failure modes.
+    """
+    if probe_name not in PROBE_SCENARIOS:
+        raise ValueError(f"Unsupported probe_name: {probe_name}")
+
+    probe = PROBE_SCENARIOS[probe_name]
+    scenario = generate_scenario(seed, probe["task_id"])
+    scenario["weather"] = [day.copy() for day in scenario["weather"]]
+    scenario["probe_name"] = probe_name
+    scenario["probe_notes"] = probe["notes"]
+
+    if "budget" in probe:
+        scenario["budget"] = probe["budget"]
+    if "override_sm" in probe:
+        scenario["override_sm"] = probe["override_sm"]
+    if "override_n_factor" in probe:
+        scenario["override_n_factor"] = probe["override_n_factor"]
+    if "start_at_dvs" in probe:
+        scenario["start_at_dvs"] = probe["start_at_dvs"]
+    if "force_forecast_rain" in probe:
+        for index, rain in enumerate(probe["force_forecast_rain"]):
+            if index < len(scenario["weather"]):
+                scenario["weather"][index]["rain"] = rain
+
+    return scenario
 
 
 def _compute_universal_target(seed: int) -> float:

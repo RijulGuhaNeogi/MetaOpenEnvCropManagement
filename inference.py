@@ -14,10 +14,12 @@ Uses the WebSocket-based EnvClient for multi-step episodes.
 """
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import re
 import sys
+from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -285,11 +287,58 @@ def greedy_action(obs, fert_stages_done: set) -> dict:
     return {"action_type": "wait", "amount": 0.0}
 
 
+def _record_transition(
+    records: list[dict],
+    task_id: int,
+    step_num: int,
+    policy_name: str,
+    observation,
+    action: CropAction,
+    result,
+) -> None:
+    """Append a transition record for offline RL or imitation learning."""
+    next_observation = result.observation
+    records.append(
+        {
+            "task_id": task_id,
+            "step": step_num,
+            "policy": policy_name,
+            "observation": observation.model_dump(),
+            "action": action.model_dump(),
+            "reward": result.reward,
+            "done": result.done,
+            "next_observation": next_observation.model_dump(),
+            "metadata": next_observation.metadata,
+        }
+    )
+
+
+def _write_trajectory_jsonl(path: str, records: list[dict]) -> None:
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", encoding="utf-8") as handle:
+        for record in records:
+            handle.write(json.dumps(record) + "\n")
+
+
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run Crop Management inference.")
+    parser.add_argument(
+        "--trajectory-output",
+        default=os.getenv("TRAJECTORY_OUTPUT", ""),
+        help="Optional path to write JSONL transitions from the executed policy.",
+    )
+    return parser.parse_args()
+
+
 # ---------------------------------------------------------------------------
 # Main loop using WebSocket client for multi-step episodes
 # ---------------------------------------------------------------------------
 
 def run():
+    args = _parse_args()
+    trajectory_records: list[dict] = []
+
     # Quick HTTP health check (using context manager for clean socket handling)
     with httpx.Client(base_url=ENV_URL, timeout=30.0) as http:
         health = http.get("/health")
@@ -322,13 +371,18 @@ def run():
             fert_stages_done: set = set()
 
             while not result.done and step_num < MAX_CLIENT_STEPS:
+                previous_obs = obs
+
                 # Choose action: try LLM first, fall back to heuristic
                 if llm_client is not None:
                     action_dict = call_llm(obs)
+                    policy_name = "llm"
                     if not action_dict or "action_type" not in action_dict:
                         action_dict = greedy_action(obs, fert_stages_done)
+                        policy_name = "greedy_fallback"
                 else:
                     action_dict = greedy_action(obs, fert_stages_done)
+                    policy_name = "greedy"
 
                 # Ensure amount is present
                 if "amount" not in action_dict:
@@ -337,6 +391,17 @@ def run():
                 action = CropAction(**action_dict)
                 result = sync_client.step(action)
                 obs = result.observation
+
+                if args.trajectory_output:
+                    _record_transition(
+                        trajectory_records,
+                        task_id=task_id,
+                        step_num=step_num + 1,
+                        policy_name=policy_name,
+                        observation=previous_obs,
+                        action=action,
+                        result=result,
+                    )
 
                 step_num += 1
                 rew_str = f"{result.reward:.4f}" if result.reward is not None else "n/a"
@@ -365,6 +430,12 @@ def run():
     if all_scores:
         overall = sum(all_scores.values()) / len(all_scores)
         print(f"Overall: {overall:.4f}")
+    if args.trajectory_output:
+        _write_trajectory_jsonl(args.trajectory_output, trajectory_records)
+        print(
+            f"Trajectory export: wrote {len(trajectory_records)} transitions to "
+            f"{args.trajectory_output}"
+        )
     if llm_calls or llm_fallbacks:
         print(f"\nLLM stats: {llm_calls} calls, {llm_fallbacks} fallbacks")
         if llm_consecutive_errors >= LLM_ERROR_THRESHOLD:
