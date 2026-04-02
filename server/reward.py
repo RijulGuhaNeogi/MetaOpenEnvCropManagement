@@ -19,12 +19,12 @@ def _clamp(value: float, lower: float, upper: float) -> float:
     return max(lower, min(upper, value))
 
 
-def _fertilizer_window_target(dvs: float) -> tuple[float | None, float]:
+def _fertilizer_window_target(dvs: float) -> tuple[float | None, float | None, float]:
     if 0.20 <= dvs <= 0.40:
-        return 18.0, 0.14
+        return 18.0, 0.30, 0.14
     if 0.50 <= dvs <= 0.70:
-        return 15.0, 0.12
-    return None, 0.0
+        return 15.0, 0.60, 0.12
+    return None, None, 0.0
 
 
 def compute_step_reward(
@@ -35,6 +35,7 @@ def compute_step_reward(
     cost: float,
     budget_remaining: float,
     total_n: float = 0.0,
+    total_water: float = 0.0,
     forecast_rain: float = 0.0,
     root_zone_depth_cm: float = 90.0,
     target_sm_low: float = 0.28,
@@ -51,6 +52,7 @@ def compute_step_reward(
     elif action_type == "irrigate":
         target_sm = (target_sm_low + target_sm_high) / 2.0
         desired_amount = max(0.0, (target_sm - sm) * root_zone_depth_cm)
+        water_pressure = min(0.04, max(0.0, total_water) / 50.0 * 0.04)
 
         if sm >= target_sm_high:
             return _clamp(-0.04 - 0.01 * amount, -0.14, -0.02)
@@ -66,19 +68,25 @@ def compute_step_reward(
         overshoot = max(0.0, amount - desired_amount * 1.2)
         overshoot_penalty = min(0.08, overshoot * 0.015)
         reward = 0.02 + 0.11 * fit_score * dryness_score
-        reward -= forecast_penalty + overshoot_penalty
+        reward -= forecast_penalty + overshoot_penalty + water_pressure
         return _clamp(reward, -0.12, 0.14)
 
     elif action_type == "fertilize":
-        target_amount, window_bonus = _fertilizer_window_target(dvs)
+        target_amount, target_dvs, window_bonus = _fertilizer_window_target(dvs)
         projected_total_n = total_n + amount
 
         if target_amount is not None:
+            timing_score = max(0.0, 1.0 - abs(dvs - (target_dvs or dvs)) / 0.10)
+            timing_multiplier = 0.55 + 0.45 * timing_score
             dose_ratio = amount / max(target_amount, 1.0)
             fit_score = max(0.0, 1.0 - min(abs(dose_ratio - 1.0), 2.0) / 2.0)
             season_excess = max(0.0, projected_total_n - 45.0)
             excess_penalty = min(0.12, season_excess / 30.0 * 0.12)
-            return _clamp(0.03 + window_bonus * fit_score - excess_penalty, -0.10, 0.16)
+            return _clamp(
+                0.03 + window_bonus * fit_score * timing_multiplier - excess_penalty,
+                -0.10,
+                0.16,
+            )
         elif dvs < 0.20:
             return -0.01  # Slightly wasteful: too early to matter much
         elif dvs > 1.5:
@@ -111,6 +119,8 @@ def compute_delta_reward(
     post_n_availability: float,
     cost: float,
     budget_remaining: float,
+    total_cost: float = 0.0,
+    budget: float = 0.0,
 ) -> float:
     """Reward the consequence of an action after the transition.
 
@@ -122,18 +132,27 @@ def compute_delta_reward(
 
     spend_ratio = cost / max(budget_remaining, 1.0)
     cost_penalty = min(0.03, spend_ratio * 0.03)
+    spend_pressure = 0.0
+    if budget > 0.0:
+        spend_pressure = min(0.06, max(0.0, total_cost) / budget * 0.06)
 
     if action_type == "irrigate":
         stress_gain = post_water_stress - pre_water_stress
         overshoot_penalty = max(0.0, post_sm - 0.40) * 0.6
         no_effect_penalty = 0.02 if post_sm <= pre_sm + 0.002 else 0.0
-        reward = 0.7 * stress_gain - overshoot_penalty - no_effect_penalty - cost_penalty
+        reward = (
+            0.7 * stress_gain
+            - overshoot_penalty
+            - no_effect_penalty
+            - cost_penalty
+            - spend_pressure
+        )
         return _clamp(reward, -0.15, 0.15)
 
     if action_type == "fertilize":
         n_gain = post_n_availability - pre_n_availability
         inefficiency_penalty = 0.02 if n_gain < 0.01 else 0.0
-        reward = 0.6 * n_gain - inefficiency_penalty - cost_penalty
+        reward = 0.6 * n_gain - inefficiency_penalty - cost_penalty - spend_pressure
         return _clamp(reward, -0.15, 0.15)
 
     return 0.0

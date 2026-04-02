@@ -13,9 +13,12 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+
 # Ensure repo root is importable
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from inference import greedy_action
 from models import CropAction, CropObservation, CropState
 from server.environment import CropEnvironment
 from server.reward import compute_delta_reward, compute_step_reward
@@ -34,23 +37,8 @@ def _run_episode(task_id: int, seed: int = SEED) -> tuple[float, int]:
     fert_done = set()
 
     while not obs.done:
-        dvs = obs.crop_status.get("dvs", 0.0)
-        sm = obs.soil_status.get("sm", 0.3)
-        budget_left = obs.resources_used.get("budget_remaining", 0.0)
-
-        # Simple greedy: harvest at maturity, irrigate when dry, fertilize at key stages
-        if dvs >= 1.8:
-            action = CropAction(action_type="harvest", amount=0.0)
-        elif sm < 0.22 and budget_left > 5.0:
-            action = CropAction(action_type="irrigate", amount=2.5)
-        elif 0.20 <= dvs <= 0.40 and "s1" not in fert_done and budget_left > 25:
-            fert_done.add("s1")
-            action = CropAction(action_type="fertilize", amount=15.0)
-        elif 0.50 <= dvs <= 0.70 and "s2" not in fert_done and budget_left > 20:
-            fert_done.add("s2")
-            action = CropAction(action_type="fertilize", amount=12.0)
-        else:
-            action = CropAction(action_type="wait", amount=0.0)
+        action_dict = greedy_action(obs, fert_done)
+        action = CropAction(**action_dict)
 
         obs = env.step(action)
         steps += 1
@@ -175,6 +163,7 @@ def test_observation_includes_control_features():
     assert "forecast_rain_3d" in obs.control_features
     assert "forecast_rain_7d" in obs.control_features
     assert "days_since_last_irrigation" in obs.control_features
+    assert "rooting_depth_cm" in obs.control_features
     assert "dvs_distance_to_next_fertilizer_window" in obs.control_features
 
 
@@ -187,6 +176,7 @@ def test_irrigation_reward_prefers_moderate_dose():
         amount=2.5,
         cost=5.0,
         budget_remaining=100.0,
+        total_water=0.0,
         forecast_rain=0.0,
     )
     wasteful = compute_step_reward(
@@ -196,9 +186,10 @@ def test_irrigation_reward_prefers_moderate_dose():
         amount=8.0,
         cost=16.0,
         budget_remaining=100.0,
+        total_water=0.0,
         forecast_rain=0.0,
     )
-    assert moderate > wasteful
+    assert moderate > wasteful + 1e-9
 
 
 def test_fertilizer_reward_prefers_sensible_dose_in_window():
@@ -221,7 +212,7 @@ def test_fertilizer_reward_prefers_sensible_dose_in_window():
         budget_remaining=100.0,
         total_n=10.0,
     )
-    assert sensible > excessive
+    assert sensible > excessive + 1e-9
 
 
 def test_delta_reward_is_positive_for_stress_relief():
@@ -289,11 +280,11 @@ def test_training_adapter_maps_discrete_actions():
     """Discrete training actions should map to valid public CropAction values."""
     action = discrete_to_crop_action("irrigate_medium")
     assert action.action_type == "irrigate"
-    assert action.amount == 5.0
+    assert action.amount == pytest.approx(5.0)
 
     harvest = discrete_to_crop_action("harvest")
     assert harvest.action_type == "harvest"
-    assert harvest.amount == 0.0
+    assert harvest.amount == pytest.approx(0.0)
 
 
 def test_training_adapter_lists_expected_actions():
@@ -301,3 +292,53 @@ def test_training_adapter_lists_expected_actions():
     actions = list_discrete_actions()
     assert actions[0] == "wait"
     assert "fertilize_large" in actions
+
+
+def test_all_discrete_actions_map_to_valid_crop_actions():
+    """Every discrete action should map cleanly into the public schema."""
+    mapped = [discrete_to_crop_action(name) for name in list_discrete_actions()]
+
+    assert len(mapped) == 8
+    assert {action.action_type for action in mapped} == {
+        "wait",
+        "harvest",
+        "irrigate",
+        "fertilize",
+    }
+
+
+def test_budget_exhaustion_degrades_action_to_wait():
+    """Over-budget actions should be downgraded to wait without crashing."""
+    env = CropEnvironment()
+    env.reset(seed=SEED, task_id=3, probe_name="budget_starvation")
+
+    obs = env.step(CropAction(action_type="fertilize", amount=50.0))
+    assert any("Over budget" in message for message in obs.conflicts)
+    assert env.state.actions_taken[-1]["action_type"] == "wait"
+
+
+def test_probe_dense_reward_and_final_grade_are_directionally_aligned():
+    """A better first action on a probe should help both dense reward and final grade."""
+
+    def run_probe(first_action: CropAction) -> tuple[float, float]:
+        env = CropEnvironment()
+        obs = env.reset(seed=SEED, task_id=1, probe_name="over_irrigation_trap")
+        fert_done: set[str] = set()
+        dense_total = 0.0
+
+        obs = env.step(first_action)
+        dense_total += obs.metadata.get("reward_breakdown", {}).get("step_reward", 0.0)
+
+        while not obs.done:
+            action_dict = greedy_action(obs, fert_done)
+            obs = env.step(CropAction(**action_dict))
+            if not obs.done:
+                dense_total += obs.metadata.get("reward_breakdown", {}).get("step_reward", 0.0)
+
+        return dense_total, obs.reward or 0.0
+
+    wait_dense, wait_final = run_probe(CropAction(action_type="wait", amount=0.0))
+    irrigate_dense, irrigate_final = run_probe(CropAction(action_type="irrigate", amount=5.0))
+
+    assert wait_dense >= irrigate_dense
+    assert wait_final >= irrigate_final

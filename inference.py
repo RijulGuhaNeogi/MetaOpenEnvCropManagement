@@ -75,15 +75,17 @@ ACTION PRIORITY (follow this order every step):
    → {"action_type": "harvest", "amount": 0}
 
 2. FERTILIZE — you MUST fertilize exactly twice per season:
-   • First application:  when 0.20 <= DVS <= 0.40 → 15 kg N/ha
-   • Second application: when 0.50 <= DVS <= 0.70 → 12 kg N/ha
+    • First application:  aim near DVS 0.30, not immediately at window start → 18 kg N/ha
+    • Second application: aim near DVS 0.60, not immediately at window start → 15 kg N/ha
    Skipping fertilization severely hurts your score (15% of grade).
-   → {"action_type": "fertilize", "amount": 15}
+    → {"action_type": "fertilize", "amount": 18}
 
 3. IRRIGATE — if soil moisture < 0.22 AND no rain > 0.3cm in forecast:
-   • Normal: 2.5 cm    • Critical (sm < 0.18): 3.0 cm
+    • Prefer deficit-based irrigation using rooting depth and moisture gap.
+    • Apply only enough water to move soil moisture toward 0.30, capped at 5.0 cm.
+    • If critically dry (sm < 0.18), irrigate even if rain is forecast.
    Never irrigate if sm > 0.35.
-   → {"action_type": "irrigate", "amount": 2.5}
+    → {"action_type": "irrigate", "amount": 2.0}
 
 4. WAIT — only if none of the above apply.
    → {"action_type": "wait", "amount": 0}
@@ -93,6 +95,7 @@ SCORING (same formula for all tasks):
   Timing = how close your fertilization is to DVS 0.3 and 0.6.
 
 BUDGET: Always check budget_remaining before spending.
+WATER: Over-irrigation harms both water efficiency and dense reward, so do not irrigate to field capacity unless the deficit requires it.
 Return ONLY valid JSON, no explanation."""
 
 
@@ -103,6 +106,7 @@ def compress_observation(obs) -> str:
     wt = obs.weather_today
     ru = obs.resources_used
     sm = obs.season_summary
+    cf = obs.control_features
 
     lines = [
         f"Task: {obs.task_name} | Day {obs.day}/{obs.day + obs.days_remaining}",
@@ -132,6 +136,16 @@ def compress_observation(obs) -> str:
         f"cost=${ru.get('total_cost', 0):.1f} "
         f"remaining=${ru.get('budget_remaining', 0):.1f}"
     )
+    if cf:
+        lines.append(
+            "Control: "
+            f"moist_gap={cf.get('moisture_gap_to_target', 0)} "
+            f"rain3d={cf.get('forecast_rain_3d', 0)}cm "
+            f"rain7d={cf.get('forecast_rain_7d', 0)}cm "
+            f"budget_ratio={cf.get('budget_remaining_ratio', 0)} "
+            f"root_depth={cf.get('rooting_depth_cm', 90)}cm "
+            f"next_fert_window={cf.get('dvs_distance_to_next_fertilizer_window', 0)}"
+        )
     lines.append(f"Target yield: {sm.get('target_yield', 0):.0f} kg/ha")
 
     if obs.conflicts:
@@ -228,12 +242,12 @@ SM_IRRIGATE_THRESHOLD = 0.22    # Soil moisture below this = dry
 SM_CRITICAL_THRESHOLD = 0.18    # Soil moisture below this = critically dry
 RAIN_THRESHOLD_CM = 0.3         # Rain forecast above this = skip irrigation
 HARVEST_DVS = 1.8               # Minimum DVS for harvest
-FERT_STAGE1_DVS = (0.20, 0.40)  # DVS range for first fertilization
-FERT_STAGE2_DVS = (0.50, 0.70)  # DVS range for second fertilization
-FERT_STAGE1_KG = 15.0           # kg N/ha for first application
-FERT_STAGE2_KG = 12.0           # kg N/ha for second application
-IRRIG_NORMAL_CM = 2.5           # cm of water for normal irrigation
-IRRIG_CRITICAL_CM = 3.0         # cm of water for critical irrigation
+TARGET_SM = 0.30                # Soil moisture target for irrigation dosing
+MAX_IRRIGATION_CM = 5.0         # Do not irrigate more than this in one step
+FERT_STAGE1_DVS = (0.27, 0.40)  # DVS range for first fertilization
+FERT_STAGE2_DVS = (0.57, 0.70)  # DVS range for second fertilization
+FERT_STAGE1_KG = 18.0           # kg N/ha for first application
+FERT_STAGE2_KG = 15.0           # kg N/ha for second application
 
 
 def greedy_action(obs, fert_stages_done: set) -> dict:
@@ -249,12 +263,14 @@ def greedy_action(obs, fert_stages_done: set) -> dict:
     ss = obs.soil_status
     ru = obs.resources_used
     fc = obs.weather_forecast
+    cf = obs.control_features
 
     dvs = cs.get("dvs", 0.0)
     sm = ss.get("sm", 0.3)
     budget_remaining = ru.get("budget_remaining", 0.0)
     irrig_cost = ru.get("irrigation_cost_per_cm", 2.0)
     fert_cost = ru.get("fertilizer_cost_per_kg", 1.5)
+    rooting_depth_cm = cf.get("rooting_depth_cm", 90.0)
 
     # Check if rain is coming in next 2 days
     rain_coming = False
@@ -268,12 +284,22 @@ def greedy_action(obs, fert_stages_done: set) -> dict:
     if dvs >= HARVEST_DVS:
         return {"action_type": "harvest", "amount": 0.0}
 
-    # 2. Irrigate dry soil (no rain expected)
-    if sm < SM_IRRIGATE_THRESHOLD and not rain_coming and budget_remaining > irrig_cost * IRRIG_NORMAL_CM:
-        return {"action_type": "irrigate", "amount": IRRIG_NORMAL_CM}
-    if sm < SM_CRITICAL_THRESHOLD and budget_remaining > irrig_cost * IRRIG_CRITICAL_CM:
-        # Critical dryness — irrigate regardless of rain
-        return {"action_type": "irrigate", "amount": IRRIG_CRITICAL_CM}
+    # 2. Irrigate dry soil using a deficit-based dose
+    desired_irrigation = max(
+        0.5,
+        min(MAX_IRRIGATION_CM, (TARGET_SM - sm) * rooting_depth_cm),
+    )
+    affordable_irrigation = budget_remaining / max(irrig_cost, 0.1)
+
+    if sm < SM_CRITICAL_THRESHOLD:
+        irrigation_amount = min(max(desired_irrigation, 3.0), affordable_irrigation)
+        if irrigation_amount >= 0.5:
+            return {"action_type": "irrigate", "amount": round(irrigation_amount, 2)}
+
+    if sm < SM_IRRIGATE_THRESHOLD and not rain_coming:
+        irrigation_amount = min(desired_irrigation, affordable_irrigation)
+        if irrigation_amount >= 0.5:
+            return {"action_type": "irrigate", "amount": round(irrigation_amount, 2)}
 
     # 3. Fertilize at key growth stages (once per stage)
     if FERT_STAGE1_DVS[0] <= dvs <= FERT_STAGE1_DVS[1] and "stage1" not in fert_stages_done and budget_remaining > fert_cost * FERT_STAGE1_KG:

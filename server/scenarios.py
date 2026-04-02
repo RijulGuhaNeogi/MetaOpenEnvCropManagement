@@ -257,9 +257,7 @@ def generate_probe_scenario(seed: int, probe_name: str) -> dict[str, Any]:
     if "start_at_dvs" in probe:
         scenario["start_at_dvs"] = probe["start_at_dvs"]
     if "force_forecast_rain" in probe:
-        for index, rain in enumerate(probe["force_forecast_rain"]):
-            if index < len(scenario["weather"]):
-                scenario["weather"][index]["rain"] = rain
+        scenario["force_forecast_rain"] = list(probe["force_forecast_rain"])
 
     return scenario
 

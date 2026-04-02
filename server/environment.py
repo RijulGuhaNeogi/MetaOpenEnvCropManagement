@@ -235,6 +235,7 @@ class CropEnvironment(
             cost=cost,
             budget_remaining=budget_remaining,
             total_n=self._sim.total_n,
+            total_water=self._sim.total_water,
             forecast_rain=forecast_rain_3d,
             root_zone_depth_cm=scenario["soil_params"].rooting_depth_mm / 10.0,
         )
@@ -259,6 +260,8 @@ class CropEnvironment(
             post_n_availability=self._sim.n_factor,
             cost=cost,
             budget_remaining=budget_remaining,
+            total_cost=self._state.total_cost,
+            budget=self._state.budget,
         )
         step_reward = 0.4 * intent_reward + 0.6 * delta_reward
         step_metadata = self._step_metadata(
@@ -364,6 +367,13 @@ class CropEnvironment(
         if "override_n_factor" in scenario:
             self._sim.n_factor = max(0.3, min(1.0, scenario["override_n_factor"]))
 
+        forced_forecast_rain = scenario.get("force_forecast_rain")
+        if forced_forecast_rain:
+            for offset, rain in enumerate(forced_forecast_rain, start=1):
+                weather_index = self._sim.current_day + offset
+                if weather_index < len(self._sim.weather):
+                    self._sim.weather[weather_index]["rain"] = rain
+
     def _step_metadata(
         self,
         intent_reward: float | None = None,
@@ -407,7 +417,6 @@ class CropEnvironment(
         )
 
         budget_remaining = self._state.budget - self._state.total_cost
-        target_sm = 0.30
         if sim.sm < 0.28:
             moisture_gap_to_target = round(0.28 - sim.sm, 3)
         elif sim.sm > 0.32:
@@ -435,10 +444,16 @@ class CropEnvironment(
         elif sim.dvs < 0.50:
             dvs_distance_to_next_window = round(0.50 - sim.dvs, 3)
         else:
-            dvs_distance_to_next_window = round(max(0.0, sim.dvs - 0.70), 3)
+            dvs_distance_to_next_window = -1.0
 
+        irrig_cost = scenario["irrigation_cost"]
+        fert_cost = scenario["fertilizer_cost"]
         estimated_budget_to_finish = round(
-            max(0.0, (forecast_rain_7d < 1.0) * 12.0 + (sim.n_factor < 0.6) * 18.0),
+            max(
+                0.0,
+                (forecast_rain_7d < 1.0) * irrig_cost * 4.0
+                + (sim.n_factor < 0.6) * fert_cost * 15.0,
+            ),
             2,
         )
 
@@ -497,6 +512,7 @@ class CropEnvironment(
                 "days_since_last_fertilization": days_since_last_fertilization,
                 "fertilizer_events_count": self._state.fertilizer_events_count,
                 "cumulative_n_applied": round(sim.total_n, 2),
+                "rooting_depth_cm": round(scenario["soil_params"].rooting_depth_mm / 10.0, 1),
                 "estimated_budget_to_finish": estimated_budget_to_finish,
                 "budget_remaining_ratio": round(
                     budget_remaining / max(self._state.budget, 1.0), 3

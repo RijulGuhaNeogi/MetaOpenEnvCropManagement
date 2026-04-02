@@ -5,6 +5,8 @@
 
 A deterministic, multi-step precision agriculture environment built on the [OpenEnv](https://github.com/meta-pytorch/OpenEnv) framework. An AI agent manages a wheat growing season — deciding weekly when to irrigate, fertilize, and harvest to maximize yield while minimizing water use and cost.
 
+The current environment is optimized for both public-task grading quality and RL learnability: dense rewards are post-transition aware, observations include policy-native control features, and internal probe scenarios exist for diagnosing reward/behavior failures without changing the public tasks.
+
 ---
 
 ## Why Precision Agriculture?
@@ -87,7 +89,22 @@ The WOFOST-inspired crop growth simulator captures real agricultural dynamics: t
 | `weather_forecast` | list[dict] | 5-day forecast (with slight noise for realism) |
 | `resources_used` | dict | Total water, nitrogen, cost, budget remaining, unit costs |
 | `season_summary` | dict | Crop name, location, target yield, budget, step size |
+| `control_features` | dict | Derived RL-facing features such as moisture gap, short-horizon rain sums, rooting depth, fertilizer-window distance, and budget ratio |
 | `conflicts` | list[str] | Feedback on invalid actions |
+
+### Key control features
+
+- `moisture_gap_to_target`
+- `forecast_rain_3d`
+- `forecast_rain_7d`
+- `days_since_last_irrigation`
+- `days_since_last_fertilization`
+- `fertilizer_events_count`
+- `cumulative_n_applied`
+- `budget_remaining_ratio`
+- `rooting_depth_cm`
+- `dvs_distance_to_next_fertilizer_window`
+- `estimated_budget_to_finish`
 
 ---
 
@@ -115,13 +132,27 @@ Difficulty comes from **environment conditions** (climate, budget, soil), not fr
 
 ### Step Rewards
 
-Dense per-step signals during the episode (designed to resist reward hacking):
-- **Irrigate dry soil:** +0.10 | **Irrigate wet soil:** -0.05
-- **Fertilize at key DVS:** +0.15 | **Fertilize late:** -0.10
-- **Harvest at maturity:** +0.20 | **Harvest too early:** -0.30
-- **Wait:** 0.00 (neutral — no free reward for doing nothing)
-- **Late harvest (DVS > 2.05):** proportional penalty up to -0.15
-- **Between-window fertilization:** -0.03 (discourages spray-more strategies)
+Dense per-step signals are split into:
+
+- **Intent reward:** evaluates whether the action is agronomically sensible before transition
+- **Delta reward:** evaluates whether the action actually relieved stress or wasted resources after transition
+
+This reward breakdown is exposed in observation metadata for diagnostics and offline RL.
+
+Current shaping highlights:
+
+- **Irrigation**
+  - rewards closing the moisture deficit toward the target band around 0.30
+  - penalizes overshoot, irrigating ahead of forecast rain, cumulative water waste, and expensive low-impact irrigation
+- **Fertilization**
+  - rewards both correct DVS timing and sensible nitrogen dose
+  - peaks near DVS 0.30 and 0.60 rather than rewarding the full window equally
+  - penalizes excess seasonal nitrogen and late ineffective application
+- **Harvest**
+  - rewards harvesting in the maturity window around DVS 1.8–2.05
+  - penalizes early and late harvest
+- **Wait**
+  - remains neutral to avoid lazy-wait exploitation
 
 ---
 
@@ -129,10 +160,12 @@ Dense per-step signals during the episode (designed to resist reward hacking):
 
 | Task | Score |
 |------|-------|
-| 1 (Easy) | 0.8166 |
-| 2 (Medium) | 0.8049 |
-| 3 (Hard) | 0.6986 |
-| **Overall** | **0.7734** |
+| 1 (Easy) | 0.8442 |
+| 2 (Medium) | 0.8155 |
+| 3 (Hard) | 0.7046 |
+| **Overall** | **0.7881** |
+
+These scores are produced by the current greedy heuristic, which now uses deficit-based irrigation and fertilizer timing/amounts aligned with the reward targets.
 
 ---
 
@@ -151,10 +184,11 @@ MetaHackathonPrep/
 │   ├── tasks.py            # Task definitions (3 difficulty levels)
 │   └── Dockerfile          # Docker image for HuggingFace Spaces
 ├── tests/
-│   └── test_smoke.py       # Smoke tests (determinism, reset/step, scoring range)
+│   └── test_smoke.py       # Smoke + RL-focused tests (22 passing)
 ├── models.py               # CropAction, CropObservation, CropState
 ├── client.py               # WebSocket EnvClient subclass
-├── inference.py            # Greedy heuristic + LLM inference script
+├── inference.py            # Greedy heuristic + LLM inference + optional trajectory export
+├── training_adapter.py     # Discrete RL action adapter for training-only workflows
 ├── openenv.yaml            # OpenEnv environment metadata
 ├── pyproject.toml          # Package configuration
 ├── requirements.txt        # Python dependencies
@@ -215,6 +249,14 @@ Then run:
 python inference.py
 ```
 
+Optional trajectory export:
+
+```bash
+python inference.py --trajectory-output trajectories/run.jsonl
+```
+
+This writes JSONL transitions with observation, action, reward, next observation, done flag, and metadata for offline RL or imitation-learning bootstrapping.
+
 Or export the variables directly:
 
 ```bash
@@ -240,6 +282,7 @@ python inference.py
 | `MODEL_NAME` | For LLM mode | Model identifier |
 | `HF_TOKEN` | For LLM mode | HuggingFace / API authentication token |
 | `ENV_URL` | No | Server URL (default: `http://localhost:8000`) |
+| `TRAJECTORY_OUTPUT` | No | Optional JSONL path for transition export |
 
 All variables can be set in a `.env` file in the project root (auto-loaded via `python-dotenv`).
 
@@ -252,6 +295,46 @@ docker build -f server/Dockerfile -t crop-management .
 docker run -p 7860:7860 crop-management
 ENV_URL=http://localhost:7860 python inference.py
 ```
+
+## Testing
+
+```bash
+python -m pytest tests/test_smoke.py -q
+```
+
+Current test coverage includes:
+
+- environment reset/step/state basics
+- determinism and difficulty ordering
+- control feature presence
+- reward monotonicity for irrigation and fertilizer
+- delta-reward sanity for stress relief
+- neutral wait behavior
+- reward breakdown metadata
+- internal probe scenario loading
+- discrete training adapter mapping
+- budget exhaustion handling
+- directional alignment between probe dense reward and terminal grade
+
+The current smoke suite has **22 passing tests**.
+
+## Internal RL Utilities
+
+These are useful for RL development but do not change the public task interface:
+
+- **Probe scenarios** via `reset(..., probe_name=...)`
+  - `over_irrigation_trap`
+  - `late_fertilizer_temptation`
+  - `budget_starvation`
+  - `harvest_hesitation`
+  - `drought_rescue`
+- **Discrete action adapter** in `training_adapter.py`
+  - `wait`
+  - `harvest`
+  - `irrigate_small`, `irrigate_medium`, `irrigate_large`
+  - `fertilize_small`, `fertilize_medium`, `fertilize_large`
+
+These utilities are intended for diagnostics and training convenience only. The public OpenEnv action schema remains `action_type + amount`.
 
 ---
 
@@ -267,6 +350,8 @@ The simulator implements key dynamics from the WOFOST (World Food Studies) model
 - **Nitrogen response:** Fertilization increases growth factor (0.3→1.0); phenology-aware depletion (slow pre-anthesis, fast post-anthesis)
 - **Partitioning:** DVS-dependent allocation to storage organs (grain yield)
 - **Senescence:** Realistic LAI decline after DVS > 1.5 (~7-10 day period)
+
+This is a **WOFOST-inspired** simulator, not the PCSE reference implementation. That tradeoff is intentional: the current environment favors deterministic behavior, transparent grading, small deployment footprint, and strong RL signal quality over additional simulator complexity.
 
 Three climatic profiles with deterministic weather generation:
 - **Netherlands:** Mild maritime, reliable rainfall (easy)
