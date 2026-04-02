@@ -173,6 +173,10 @@ These scores are produced by the current greedy heuristic, which now uses defici
 
 ```
 MetaHackathonPrep/
+├── examples/
+│   ├── direct_benchmark.py # Minimal direct-environment benchmark example
+│   └── client_greedy_run.py# Minimal WebSocket client example
+├── benchmark_sweep.py      # Reusable multi-seed greedy benchmark utility
 ├── server/
 │   ├── __init__.py         # Package marker
 │   ├── app.py              # FastAPI server via create_app() + /tasks endpoint
@@ -184,7 +188,7 @@ MetaHackathonPrep/
 │   ├── tasks.py            # Task definitions (3 difficulty levels)
 │   └── Dockerfile          # Docker image for HuggingFace Spaces
 ├── tests/
-│   └── test_smoke.py       # Smoke + RL-focused tests (22 passing)
+│   └── test_smoke.py       # Smoke + RL-focused tests (26 passing)
 ├── models.py               # CropAction, CropObservation, CropState
 ├── client.py               # WebSocket EnvClient subclass
 ├── inference.py            # Greedy heuristic + LLM inference + optional trajectory export
@@ -197,6 +201,18 @@ MetaHackathonPrep/
 ├── .dockerignore           # Docker build exclusions
 └── README.md               # This file
 ```
+
+---
+
+## Usage Paths
+
+The repo supports three primary workflows:
+
+- **Inference path** — run the full WebSocket client plus heuristic or LLM policy against a live server
+- **Direct benchmark path** — evaluate the built-in greedy policy directly against the environment without starting the server
+- **Test path** — validate determinism, reward behavior, and policy regressions via the smoke suite
+
+Use the inference path when you want end-to-end OpenEnv behavior, the direct benchmark path when you want fast reproducible comparisons, and the test path when you want regression protection.
 
 ---
 
@@ -274,6 +290,12 @@ python inference.py
 python inference.py
 ```
 
+Minimal client example against a running server:
+
+```bash
+python examples/client_greedy_run.py --base-url http://localhost:8000 --task-id 1 --seed 42
+```
+
 ### Environment Variables
 
 | Variable | Required | Description |
@@ -302,7 +324,7 @@ ENV_URL=http://localhost:7860 python inference.py
 python -m pytest tests/test_smoke.py -q
 ```
 
-Quick greedy multi-seed benchmark:
+Direct-environment benchmark sweep:
 
 ```bash
 python benchmark_sweep.py --start-seed 42 --count 10
@@ -313,6 +335,27 @@ Optional JSON output for scripting:
 ```bash
 python benchmark_sweep.py --start-seed 42 --count 10 --json
 ```
+
+Optional JSON file export:
+
+```bash
+python benchmark_sweep.py --start-seed 42 --count 10 --output benchmarks/sweep_42_10.json
+```
+
+Minimal direct benchmark example:
+
+```bash
+python examples/direct_benchmark.py
+```
+
+### Interpreting Single-Seed vs Multi-Seed Results
+
+- **Single-seed result** means evaluating one deterministic scenario instance, such as seed 42
+- **Multi-seed sweep** means evaluating the same policy across many deterministic scenario instances and summarizing mean, spread, and ordering
+
+Use a single seed for quick local checks and regressions. Use a multi-seed sweep to judge policy stability and difficulty calibration.
+
+In the current benchmark, Task 1 is very stable, Task 2 has moderate scenario sensitivity, and Task 3 has the largest variance because weather and budget pressure interact more strongly there. That variance is expected; what matters is that difficulty ordering remains stable on aggregate.
 
 Current test coverage includes:
 
@@ -331,6 +374,17 @@ Current test coverage includes:
 - late-harvest boundary regression checks
 
 The current smoke suite has **26 passing tests**.
+
+## Limitations
+
+This environment is intentionally **WOFOST-inspired**, not a full scientific crop model.
+
+- It models one crop family used in the public benchmark and does not attempt crop rotation or multi-season farm planning.
+- Root growth, pests, disease, salinity, and management operations beyond irrigation, fertilization, harvest, and wait are intentionally omitted.
+- Weather is deterministic by seed and forecast noise is deterministic by day; this improves reproducibility and RL debugging at the cost of richer stochastic realism.
+- The simulator is tuned for clear reward signal and grading stability, not for exact agronomic calibration to a specific field trial dataset.
+
+Those tradeoffs are intentional. The benchmark is optimized for deterministic evaluation, transparent grading, and trainable sequential decision-making rather than maximum biophysical fidelity.
 
 ## Internal RL Utilities
 

@@ -14,6 +14,7 @@ dependencies = [
     "uvicorn>=0.30",
     "openai>=1.0",
     "httpx>=0.25",
+    "python-dotenv>=1.0",
 ]
 
 [project.optional-dependencies]
@@ -25,4 +26,4 @@ dev = ["pytest", "httpx"]
 include = ["server*"]
 
 [tool.setuptools]
-py-modules = ["models", "client", "inference"]
+py-modules = ["benchmark_sweep", "models", "client", "inference", "training_adapter"]

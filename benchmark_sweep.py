@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
 from statistics import mean, pstdev
 
 from inference import greedy_action
@@ -43,6 +44,11 @@ def _parse_args() -> argparse.Namespace:
         "--json",
         action="store_true",
         help="Emit machine-readable JSON instead of formatted text.",
+    )
+    parser.add_argument(
+        "--output",
+        default="",
+        help="Optional path to write the full sweep result as JSON.",
     )
     return parser.parse_args()
 
@@ -101,32 +107,50 @@ def summarize_runs(runs: list[dict]) -> dict:
     }
 
 
+def build_result(task_ids: list[int], seeds: list[int]) -> dict:
+    task_summaries: dict[int, dict] = {}
+
+    for task_id in task_ids:
+        runs = [run_episode(task_id, seed) for seed in seeds]
+        summary = summarize_runs(runs)
+        summary["runs"] = runs
+        task_summaries[task_id] = summary
+
+    overall_mean = round(
+        mean(summary["mean_score"] for summary in task_summaries.values()),
+        4,
+    )
+    return {
+        "start_seed": seeds[0],
+        "count": len(seeds),
+        "tasks": task_summaries,
+        "overall_mean": overall_mean,
+        "difficulty_ordering_holds": all(
+            task_summaries[earlier]["mean_score"] >= task_summaries[later]["mean_score"]
+            for earlier, later in zip(task_ids, task_ids[1:])
+        ) if task_ids == sorted(task_ids) else None,
+    }
+
+
+def _write_result(path_str: str, result: dict) -> None:
+    output_path = Path(path_str)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(
+        json.dumps(result, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
 def main() -> None:
     args = _parse_args()
     if args.count <= 0:
         raise ValueError("--count must be positive")
 
     seeds = list(range(args.start_seed, args.start_seed + args.count))
-    task_summaries: dict[int, dict] = {}
+    result = build_result(args.tasks, seeds)
 
-    for task_id in args.tasks:
-        runs = [run_episode(task_id, seed) for seed in seeds]
-        task_summaries[task_id] = summarize_runs(runs)
-
-    overall_mean = round(
-        mean(summary["mean_score"] for summary in task_summaries.values()),
-        4,
-    )
-    result = {
-        "start_seed": args.start_seed,
-        "count": args.count,
-        "tasks": task_summaries,
-        "overall_mean": overall_mean,
-        "difficulty_ordering_holds": all(
-            task_summaries[earlier]["mean_score"] >= task_summaries[later]["mean_score"]
-            for earlier, later in zip(args.tasks, args.tasks[1:])
-        ) if args.tasks == sorted(args.tasks) else None,
-    }
+    if args.output:
+        _write_result(args.output, result)
 
     if args.json:
         print(json.dumps(result, indent=2, sort_keys=True))
@@ -135,12 +159,12 @@ def main() -> None:
     print(f"Seeds: {seeds[0]}-{seeds[-1]} ({len(seeds)} total)\n")
     for task_id in args.tasks:
         print(f"TASK {task_id}")
-        summary = task_summaries[task_id]
+        summary = result["tasks"][task_id]
         print(
             {
                 key: value
                 for key, value in summary.items()
-                if key != "per_seed_scores"
+                if key not in {"per_seed_scores", "runs"}
             }
         )
         print("per_seed_scores", summary["per_seed_scores"])
@@ -150,13 +174,15 @@ def main() -> None:
     print(
         {
             "task_mean_scores": {
-                task_id: task_summaries[task_id]["mean_score"]
+                task_id: result["tasks"][task_id]["mean_score"]
                 for task_id in args.tasks
             },
-            "overall_mean": overall_mean,
+            "overall_mean": result["overall_mean"],
             "difficulty_ordering_holds": result["difficulty_ordering_holds"],
         }
     )
+    if args.output:
+        print(f"\nSaved full sweep result to {args.output}")
 
 
 if __name__ == "__main__":
