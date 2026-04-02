@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "crop-management"
+version = "0.1.0"
+description = "Precision agriculture crop management environment for the OpenEnv framework"
+requires-python = ">=3.11"
+dependencies = [
+    "openenv-core @ git+https://github.com/meta-pytorch/OpenEnv.git",
+    "fastapi>=0.115",
+    "pydantic>=2.7",
+    "uvicorn>=0.30",
+    "openai>=1.0",
+    "httpx>=0.25",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "httpx"]
+
+# Setuptools: models.py, client.py, inference.py are top-level modules
+# alongside the `server` package.
+[tool.setuptools.packages.find]
+include = ["server*"]
+
+[tool.setuptools]
+py-modules = ["models", "client", "inference"]

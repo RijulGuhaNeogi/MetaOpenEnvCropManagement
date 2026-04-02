@@ -1,0 +1,63 @@
+name: crop_management
+version: "0.1.0"
+description: >
+  Precision agriculture crop management environment. An LLM agent manages
+  a wheat growing season — deciding when to irrigate, fertilize, and harvest
+  to maximize yield while minimizing water use and cost. Uses a WOFOST-inspired
+  crop growth simulator with deterministic weather.
+author: Team Hijibiji
+
+environment:
+  type: openenv
+  entry_point: server.environment:CropEnvironment
+  action_model: models:CropAction
+  observation_model: models:CropObservation
+  state_model: models:CropState
+
+tasks:
+  - name: Basic Crop Growth
+    difficulty: easy
+    objective: Manage wheat growth with generous budget — fertilize at right stages and harvest at maturity.
+  - name: Water-Efficient Farming
+    difficulty: medium
+    objective: Balance yield against water conservation and cost under variable weather.
+  - name: Precision Agriculture
+    difficulty: hard
+    objective: Maximize yield while minimizing water and cost in a drought-prone region with tight budget.
+
+api:
+  endpoints:
+    - /health
+    - /reset
+    - /step
+    - /state
+    - /tasks
+    - /docs
+
+evaluation:
+  reward_range:
+    min: 0.0
+    max: 1.0
+  deterministic: true
+
+grading: normalized
+reproducible: true
+
+inference:
+  script: inference.py
+  env_vars:
+    - ENV_URL
+    - API_BASE_URL
+    - MODEL_NAME
+    - HF_TOKEN
+
+requirements:
+  python: ">=3.11"
+  dependencies:
+    - openenv-core
+    - fastapi>=0.115
+    - pydantic>=2.7
+    - uvicorn>=0.30
+    - openai>=1.0
+    - httpx>=0.25
+    - python-dotenv>=1.0
