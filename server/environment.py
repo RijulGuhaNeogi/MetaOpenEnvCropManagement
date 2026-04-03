@@ -9,7 +9,8 @@ Episode flow:
   2. step(action) → validates action, advances sim by 7 days, returns obs
   3. Episode ends when: agent harvests, DVS≥2.0 (auto-maturity),
      season duration exceeded, or MAX_STEPS reached
-  4. Terminal observation includes the final grader score as reward
+  4. Terminal observation includes rubric_reward (grader score) and
+      reward (trajectory reward for RL training)
 
 All internal state is deterministic: same seed + same actions = same result.
 """
@@ -21,14 +22,14 @@ from typing import Any, Optional
 from openenv.core.env_server.interfaces import Environment
 
 from models import CropAction, CropObservation, CropState
-from models import ControlFeatures, CropStatus, ResourcesUsed, SoilStatus
+from models import ControlFeatures, CropStatus, ResourcesUsed, SoilStatus, WeatherDay
 from server.crop_sim import CropSimulator
-from server.grader import grade_episode
 from server.reward import (
     compute_delta_reward,
     compute_step_reward,
     compute_trajectory_reward,
 )
+from server.rubric import CropManagementRubric
 from server.scenarios import generate_probe_scenario, generate_scenario
 from server.tasks import TASKS, get_task_definition
 
@@ -47,6 +48,7 @@ class CropEnvironment(
         self._sim: Optional[CropSimulator] = None
         self._scenario: dict[str, Any] = {}
         self._state = CropState()
+        self._rubric = CropManagementRubric()
 
     # ------------------------------------------------------------------
     # OpenEnv interface
@@ -201,7 +203,7 @@ class CropEnvironment(
             self._state.total_cost += cost
 
             # Compute final grade (step_reward is not used for terminal steps)
-            grade, breakdown = grade_episode(
+            grade, breakdown = self._rubric.score_episode(
                 actual_yield=self._sim.twso,
                 target_yield=scenario["target_yield"],
                 total_water=self._sim.total_water,
@@ -218,10 +220,11 @@ class CropEnvironment(
             self._sync_state()
             return self._build_observation(
                 task, done=True, reward=final_reward,
+                rubric_reward=grade,
                 conflicts=conflicts,
                 metadata={
                     **self._step_metadata(),
-                    "grade_breakdown": breakdown,
+                    "rubric_breakdown": breakdown,
                 },
             )
 
@@ -300,7 +303,7 @@ class CropEnvironment(
             is_done = True
 
         if is_done:
-            grade, breakdown = grade_episode(
+            grade, breakdown = self._rubric.score_episode(
                 actual_yield=self._sim.twso,
                 target_yield=scenario["target_yield"],
                 total_water=self._sim.total_water,
@@ -315,10 +318,11 @@ class CropEnvironment(
             final_reward = compute_trajectory_reward(grade)
             return self._build_observation(
                 task, done=True, reward=final_reward,
+                rubric_reward=grade,
                 conflicts=conflicts,
                 metadata={
                     **step_metadata,
-                    "grade_breakdown": breakdown,
+                    "rubric_breakdown": breakdown,
                 },
             )
 
@@ -404,6 +408,7 @@ class CropEnvironment(
         task: dict,
         done: bool = False,
         reward: float | None = None,
+        rubric_reward: float | None = None,
         conflicts: list[str] | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> CropObservation:
@@ -411,7 +416,7 @@ class CropEnvironment(
         scenario = self._scenario
 
         if sim is None:
-            return CropObservation(done=done, reward=reward)
+            return CropObservation(done=done, reward=reward, rubric_reward=rubric_reward)
 
         weather_today = sim.get_weather(sim.current_day)
         weather_forecast = sim.get_weather_forecast(
@@ -465,6 +470,7 @@ class CropEnvironment(
         return CropObservation(
             done=done,
             reward=reward,
+            rubric_reward=rubric_reward,
             metadata=metadata or {},
             task_id=task["id"],
             task_name=task["name"],
@@ -486,13 +492,15 @@ class CropEnvironment(
                 field_capacity=scenario["soil_params"].field_capacity,
                 wilting_point=scenario["soil_params"].wilting_point,
             ),
-            weather_today={
-                "tmax": weather_today["tmax"],
-                "tmin": weather_today["tmin"],
-                "rain": weather_today["rain"],
-                "radiation": weather_today["radiation"],
-            },
-            weather_forecast=weather_forecast,
+            weather_today=WeatherDay(
+                tmax=weather_today["tmax"],
+                tmin=weather_today["tmin"],
+                rain=weather_today["rain"],
+                radiation=weather_today["radiation"],
+            ),
+            weather_forecast=[
+                WeatherDay(**day) for day in weather_forecast
+            ],
             resources_used=ResourcesUsed(
                 total_water_cm=round(sim.total_water, 2),
                 total_n_kg_ha=round(sim.total_n, 2),

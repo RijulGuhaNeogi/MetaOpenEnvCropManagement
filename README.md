@@ -169,6 +169,18 @@ Current shaping highlights:
 - **Wait**
   - remains neutral to avoid lazy-wait exploitation
 
+### Rubric System (RFC 004)
+
+The environment follows the [OpenEnv RFC 004](https://github.com/meta-pytorch/OpenEnv/blob/main/rfcs/004-rubrics.md) convention for delayed rewards:
+
+- **`obs.reward`** — Dense per-step signal (intent + delta blend) for RL training
+- **`obs.rubric_reward`** — Trajectory-level score from the grader at terminal steps; `None` on intermediate steps
+- **`obs.metadata["rubric_breakdown"]`** — Per-metric scores at terminal step (yield, water, cost, timing, harvest)
+
+This separation lets RL frameworks (TRL, GRPO, torchforge) distinguish immediate feedback from episode-level evaluation without ambiguity.
+
+The rubric is provided by `CropManagementRubric` (in `server/rubric.py`), a thin wrapper around the deterministic grader.
+
 ---
 
 ## Baseline Scores (Greedy Heuristic, seed=42)
@@ -177,7 +189,7 @@ Current shaping highlights:
 |------|-------|
 | 1 (Easy) | 0.8442 |
 | 2 (Medium) | 0.8155 |
-| 3 (Hard) | 0.7046 |
+| 3 (Hard) | 0.7026 |
 | **Overall** | **0.7881** |
 
 These scores are produced by the current greedy heuristic, which now uses deficit-based irrigation and fertilizer timing/amounts aligned with the reward targets.
@@ -207,11 +219,14 @@ MetaHackathonPrep/
 │   ├── crop_sim.py         # WOFOST-inspired crop growth simulator
 │   ├── grader.py           # Multi-metric deterministic scoring
 │   ├── reward.py           # Dense step + trajectory reward computation
+│   ├── rubric.py           # RFC 004 rubric (CropManagementRubric)
 │   ├── scenarios.py        # Seeded weather + scenario generator (3 locations)
 │   ├── tasks.py            # Task definitions (3 difficulty levels)
 │   └── Dockerfile          # Docker image for HuggingFace Spaces
 ├── tests/
-│   └── test_smoke.py       # Smoke + RL-focused tests (33 passing)
+│   ├── test_smoke.py       # Smoke + RL + rubric tests
+│   ├── test_integration.py # HTTP endpoint integration tests
+│   └── test_ws_episode.py  # WebSocket full-episode tests
 ├── models.py               # CropAction, CropObservation, CropState
 ├── client.py               # WebSocket EnvClient subclass
 ├── openenv.yaml            # OpenEnv environment metadata

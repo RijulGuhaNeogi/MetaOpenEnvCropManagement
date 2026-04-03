@@ -114,8 +114,8 @@ def compress_observation(obs) -> str:
         f"LAI={cs.lai:.2f} Yield={cs.twso:.0f} kg/ha",
         f"Soil: moisture={ss.sm:.3f} deficit={ss.water_deficit} "
         f"water_stress={ss.water_stress:.2f} n_avail={ss.n_availability:.2f}",
-        f"Weather today: tmax={wt.get('tmax', 0)}°C tmin={wt.get('tmin', 0)}°C "
-        f"rain={wt.get('rain', 0)} cm rad={wt.get('radiation', 0)} MJ/m2",
+        f"Weather today: tmax={wt.tmax}°C tmin={wt.tmin}°C "
+        f"rain={wt.rain} cm rad={wt.radiation} MJ/m2",
     ]
 
     # Forecast
@@ -124,8 +124,8 @@ def compress_observation(obs) -> str:
         fc_lines = []
         for f in fc[:4]:
             fc_lines.append(
-                f"  day{f.get('day', '?')}: {f.get('tmax', 0)}/{f.get('tmin', 0)}°C "
-                f"rain={f.get('rain', 0)}cm"
+                f"  day{f.day}: {f.tmax}/{f.tmin}°C "
+                f"rain={f.rain}cm"
             )
         lines.append("Forecast:\n" + "\n".join(fc_lines))
 
@@ -285,7 +285,7 @@ def greedy_action(obs, fert_stages_done: set) -> dict:
     rain_coming = False
     if fc:
         for f in fc[:2]:
-            if f.get("rain", 0) > RAIN_THRESHOLD_CM:
+            if f.rain > RAIN_THRESHOLD_CM:
                 rain_coming = True
                 break
 

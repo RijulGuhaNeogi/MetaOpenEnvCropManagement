@@ -41,6 +41,13 @@ evaluation:
     min: 0.0
     max: 1.0
   deterministic: true
+  rubric:
+    type: trajectory
+    class: server.rubric:CropManagementRubric
+    description: >-
+      Multi-metric grading (yield, water efficiency, cost efficiency,
+      fertilizer timing, harvest timing) returned as rubric_reward at
+      terminal steps per RFC 004.
 
 grading: normalized
 reproducible: true

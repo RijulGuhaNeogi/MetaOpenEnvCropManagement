@@ -13,7 +13,7 @@ Usage:
 """
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from openenv.core.env_client import EnvClient, StepResult
 
@@ -33,7 +33,10 @@ class CropEnvClient(
         self, payload: Dict[str, Any]
     ) -> StepResult[CropObservation]:
         """Deserialize the server response into a StepResult."""
-        obs_data = payload.get("observation", payload)
+        obs_data = dict(payload.get("observation", payload))
+        for field in ("reward", "done", "metadata", "rubric_reward"):
+            if field in payload:
+                obs_data[field] = payload[field]
         obs = CropObservation.model_validate(obs_data)
         return StepResult(
             observation=obs,

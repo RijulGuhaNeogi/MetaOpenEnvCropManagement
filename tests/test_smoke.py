@@ -53,7 +53,7 @@ def _run_policy_episode(task_id: int, policy, seed: int = SEED) -> tuple[float, 
         action_dict = policy(obs, fert_done)
         obs = env.step(CropAction(**action_dict))
 
-    return obs.reward or 0.0, obs.metadata.get("grade_breakdown", {})
+    return obs.reward or 0.0, obs.metadata.get("rubric_breakdown", {})
 
 
 def _wait_only_policy(obs, fert_done: set) -> dict:
@@ -605,7 +605,7 @@ def test_terminal_harvest_uses_trajectory_not_dense_reward():
     obs = env.step(CropAction(action_type="harvest", amount=0.0))
     assert obs.done
 
-    breakdown = obs.metadata["grade_breakdown"]
+    breakdown = obs.metadata["rubric_breakdown"]
     # Recompute the grade from the breakdown's raw metrics
     raw = (
         0.35 * breakdown["yield_score"]
@@ -617,3 +617,67 @@ def test_terminal_harvest_uses_trajectory_not_dense_reward():
     expected_grade = max(0.0, min(1.0, round(raw, 4)))
     expected_reward = compute_trajectory_reward(expected_grade)
     assert obs.reward == pytest.approx(expected_reward)
+
+
+# ---------------------------------------------------------------------------
+# RFC 004 rubric compliance tests
+# ---------------------------------------------------------------------------
+
+def test_rubric_reward_set_on_terminal_step():
+    """Terminal observations must carry rubric_reward (RFC 004)."""
+    score, _ = _run_episode(1)
+    env = CropEnvironment()
+    obs = env.reset(seed=SEED, task_id=1)
+    fert_done = set()
+    while not obs.done:
+        obs = env.step(CropAction(**greedy_action(obs, fert_done)))
+    assert obs.rubric_reward is not None
+    assert 0.0 <= obs.rubric_reward <= 1.0
+
+
+def test_rubric_reward_none_on_intermediate_step():
+    """Intermediate observations must have rubric_reward=None."""
+    env = CropEnvironment()
+    obs = env.reset(seed=SEED, task_id=1)
+    assert obs.rubric_reward is None
+    obs = env.step(CropAction(action_type="wait"))
+    assert not obs.done
+    assert obs.rubric_reward is None
+
+
+def test_rubric_reward_matches_grade():
+    """rubric_reward must equal the grader's score (not the trajectory reward)."""
+    env = CropEnvironment()
+    obs = env.reset(seed=SEED, task_id=1, probe_name="harvest_hesitation")
+    obs = env.step(CropAction(action_type="harvest", amount=0.0))
+    assert obs.done
+
+    breakdown = obs.metadata["rubric_breakdown"]
+    raw = (
+        0.35 * breakdown["yield_score"]
+        + 0.20 * breakdown["water_efficiency"]
+        + 0.18 * breakdown["cost_efficiency"]
+        + 0.15 * breakdown["timing_quality"]
+        + 0.12 * breakdown["harvest_timing"]
+    )
+    expected_grade = max(0.0, min(1.0, round(raw, 4)))
+    assert obs.rubric_reward == pytest.approx(expected_grade)
+
+
+def test_weather_today_is_typed():
+    """weather_today must be a WeatherDay model, not a dict."""
+    from models import WeatherDay
+    env = CropEnvironment()
+    obs = env.reset(seed=SEED, task_id=1)
+    assert isinstance(obs.weather_today, WeatherDay)
+    assert hasattr(obs.weather_today, "tmax")
+    assert hasattr(obs.weather_today, "rain")
+
+
+def test_weather_forecast_is_typed():
+    """weather_forecast entries must be WeatherDay models."""
+    from models import WeatherDay
+    env = CropEnvironment()
+    obs = env.reset(seed=SEED, task_id=1)
+    assert len(obs.weather_forecast) > 0
+    assert isinstance(obs.weather_forecast[0], WeatherDay)

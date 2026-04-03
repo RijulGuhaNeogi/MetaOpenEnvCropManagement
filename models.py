@@ -85,12 +85,25 @@ class ControlFeatures(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class WeatherDay(BaseModel):
+    """Single day of weather data."""
+    day: int = 0
+    tmax: float = 0.0
+    tmin: float = 0.0
+    rain: float = 0.0
+    radiation: float = 0.0
+
+
 class CropObservation(Observation):
     """Rich observation returned to the agent after each step.
 
     Contains crop status, soil moisture, weather (current + 5-day forecast),
     resource usage, season context, and any conflict feedback from the
     environment when an invalid action was attempted.
+
+    RFC 004 compliance: ``rubric_reward`` carries the trajectory-level score
+    (from the grader) at terminal steps, while ``reward`` carries the dense
+    per-step signal.  Non-terminal steps have ``rubric_reward = None``.
     """
     task_id: int = 0
     task_name: str = ""
@@ -100,12 +113,13 @@ class CropObservation(Observation):
 
     crop_status: CropStatus = Field(default_factory=CropStatus)
     soil_status: SoilStatus = Field(default_factory=SoilStatus)
-    weather_today: dict[str, Any] = Field(default_factory=dict)
-    weather_forecast: list[dict[str, Any]] = Field(default_factory=list)
+    weather_today: WeatherDay = Field(default_factory=WeatherDay)
+    weather_forecast: list[WeatherDay] = Field(default_factory=list)
     resources_used: ResourcesUsed = Field(default_factory=ResourcesUsed)
     season_summary: dict[str, Any] = Field(default_factory=dict)
     control_features: ControlFeatures = Field(default_factory=ControlFeatures)
     conflicts: list[str] = Field(default_factory=list)
+    rubric_reward: float | None = None
 
 
 # ---------------------------------------------------------------------------
