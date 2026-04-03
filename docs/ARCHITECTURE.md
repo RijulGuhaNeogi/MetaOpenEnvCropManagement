@@ -286,7 +286,7 @@ grade_episode()  ← grader.py
          ▼
   Observation.reward = trajectory_reward (overrides step reward)
   Observation.done = True
-  Observation.metadata = {grade_breakdown: {...}}
+  Observation.metadata = {rubric_breakdown: {...}}
 ```
 
 ---
@@ -310,6 +310,7 @@ MetaHackathonPrep/
 │   ├── scenarios.py               # Deterministic scenario/weather generation
 │   ├── tasks.py                   # Task definitions (3 difficulty levels)
 │   ├── grader.py                  # FROZEN — deterministic 5-metric scoring
+│   ├── rubric.py                  # RFC 004 rubric (CropManagementRubric)
 │   ├── reward.py                  # Dense per-step + trajectory rewards
 │   └── Dockerfile                 # Container for HuggingFace Spaces
 │
@@ -322,7 +323,6 @@ MetaHackathonPrep/
 ├── docs/                          # Documentation
 │   ├── ARCHITECTURE.md            # This document
 │   ├── hackathonBriefing.md       # Bootcamp alignment & checklist
-│   ├── IMPROVEMENT_PLAN.md        # Enhancement roadmap (Phases A–C)
 │   └── FUTURE_SCOPE_PCSE.md       # PCSE migration plan
 │
 ├── examples/                      # Runnable examples
@@ -330,7 +330,9 @@ MetaHackathonPrep/
 │   └── client_greedy_run.py       # WebSocket client example
 │
 ├── tests/                         # Test suite
-│   └── test_smoke.py              # 33 smoke + RL-focused tests
+│   ├── test_smoke.py              # Smoke + RL + rubric/weather tests
+│   ├── test_integration.py        # HTTP endpoint integration tests
+│   └── test_ws_episode.py         # Real WebSocket transport tests
 │
 ├── Preparation/                   # Hackathon prep materials
 ├── ProblemDetails/                # Problem statement
@@ -405,8 +407,10 @@ models.py ← (no internal deps)
   │
   ├── server/app.py ← models, server/environment, server/tasks
   │
-  ├── server/environment.py ← models, server/crop_sim, server/grader,
+  ├── server/environment.py ← models, server/crop_sim, server/rubric,
   │                            server/reward, server/scenarios, server/tasks
+  │
+  ├── server/rubric.py ← server/grader
   │
   ├── server/crop_sim.py ← (no internal deps; standalone simulator)
   │
@@ -442,7 +446,6 @@ models.py ← (no internal deps)
 
 ### Documented Improvement Plans
 
-- **[IMPROVEMENT_PLAN.md](IMPROVEMENT_PLAN.md)** — Phases A–C: reward alignment, heuristic lift, bug fixes
 - **[FUTURE_SCOPE_PCSE.md](FUTURE_SCOPE_PCSE.md)** — Migration from custom simulator to PCSE/WOFOST library
 
 ### Key Metrics (Current Baseline)
@@ -451,7 +454,7 @@ models.py ← (no internal deps)
 |------|----------------------|
 | 1 (Easy) | 0.8442 |
 | 2 (Medium) | 0.8155 |
-| 3 (Hard) | 0.7046 |
+| 3 (Hard) | 0.7026 |
 | **Overall** | **0.7881** |
 
 ---

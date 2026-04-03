@@ -67,7 +67,7 @@ def run_episode(task_id: int, seed: int) -> dict:
                 f"Unexpected long episode: task={task_id}, seed={seed}, steps={steps}"
             )
 
-    breakdown = obs.metadata.get("grade_breakdown", {})
+    breakdown = obs.metadata.get("rubric_breakdown", {})
     return {
         "seed": seed,
         "score": float(obs.reward or 0.0),

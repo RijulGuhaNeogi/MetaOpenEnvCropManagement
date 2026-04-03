@@ -98,8 +98,8 @@ The WOFOST-inspired crop growth simulator captures real agricultural dynamics: t
 | `days_remaining` | int | Days left in the season |
 | `crop_status` | `CropStatus` | DVS (development stage 0→2), LAI, biomass, yield, growth stage name |
 | `soil_status` | `SoilStatus` | Soil moisture, water deficit flag, water stress (0-1), N availability (0-1), field capacity, wilting point |
-| `weather_today` | dict | Temperature (max/min), rainfall, radiation |
-| `weather_forecast` | list[dict] | 5-day forecast (with slight noise for realism) |
+| `weather_today` | `WeatherDay` | Temperature (max/min), rainfall, radiation |
+| `weather_forecast` | `list[WeatherDay]` | 5-day forecast (with slight noise for realism) |
 | `resources_used` | `ResourcesUsed` | Total water, nitrogen, cost, budget remaining, unit costs |
 | `season_summary` | dict | Crop name, location, target yield, budget, step size |
 | `control_features` | `ControlFeatures` | Derived RL-facing features (see below) |
@@ -437,7 +437,7 @@ Current test coverage includes:
 - passive-policy and extra-fertilizer regression checks
 - late-harvest boundary regression checks
 
-The current smoke suite has **33 passing tests**.
+The full test suite has **48 passing tests** (38 smoke/rubric/weather + 7 HTTP integration + 3 real WebSocket transport).
 
 ## Limitations
 

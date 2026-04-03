@@ -47,7 +47,7 @@ def main() -> None:
                 "seed": args.seed,
                 "steps": steps,
                 "final_score": result.reward,
-                "grade_breakdown": obs.metadata.get("grade_breakdown", {}),
+                "rubric_breakdown": obs.metadata.get("rubric_breakdown", {}),
             }
         )
 

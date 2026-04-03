@@ -70,8 +70,8 @@ The current project is a working precision agriculture OpenEnv environment with:
 - dense per-step rewards split into intent (40%) and delta (60%) components, validated against probe scenarios
 - late-harvest reward slope retuned to -0.20/DVS with floor -0.25 (matches grader signal direction)
 - harvest intent reward branch in `compute_step_reward` documented as dead code in the environment path (present for external callers only)
-- stable greedy baseline: Task1=0.8442, Task2=0.8155, Task3=0.7046
-- 33 passing smoke tests including edge-case coverage for grader boundaries and reward behavior
+- stable greedy baseline: Task1=0.8442, Task2=0.8155, Task3=0.7026
+- 48 passing tests (smoke, rubric, weather typing, HTTP integration, real WebSocket transport)
 - 5 internal probe scenarios for RL diagnostics (over_irrigation_trap, late_fertilizer_temptation, budget_starvation, harvest_hesitation, drought_rescue)
 - optional LLM-driven inference with HF Router and automatic greedy fallback
 - control_features in observations (moisture_gap, forecast_rain, budget_ratio, dvs_window_distance, etc.)
@@ -179,7 +179,7 @@ PCSE is pure Python, ~50MB install. No C extensions required. Works on python:3.
 Proceed with PCSE only if there are at least 3 to 5 focused days available for:
 - integration (hybrid adapter construction)
 - calibration (DVS timing, yield levels, stress behavior)
-- testing (33 tests must pass, difficulty ordering must hold)
+- testing (48 tests must pass, difficulty ordering must hold)
 - Docker verification (build, health check, inference run)
 - documentation refresh
 
@@ -200,7 +200,9 @@ These are the files most relevant to the migration:
 - `server/Dockerfile` — container runtime (python:3.11-slim, port 7860)
 - `requirements.txt` — dependencies (no PCSE currently)
 - `openenv.yaml` — metadata and inference env vars
-- `tests/test_smoke.py` — 33 passing tests (smoke + RL-focused + grader edge cases)
+- `tests/test_smoke.py` — 38 smoke + RL + rubric/weather tests
+- `tests/test_integration.py` — 7 HTTP endpoint integration tests
+- `tests/test_ws_episode.py` — 3 real WebSocket transport tests
 
 ## Required Simulator Compatibility Contract
 
@@ -389,7 +391,7 @@ The bottleneck is not code generation. It is:
 
 A future PCSE migration should not be considered complete unless all of the following are true:
 - project runs end to end with PCSE-backed simulation
-- all 33 tests in `tests/test_smoke.py` pass (or justified replacements exist)
+- all 48 tests in `tests/` pass (or justified replacements exist)
 - scores remain in `[0.0, 1.0]`
 - difficulty ordering remains `Easy >= Medium >= Hard` across seeds 42-46
 - baseline scores remain within ±0.05 of current values (or justified drift is documented)
@@ -428,7 +430,7 @@ Repository context:
 - Final grading is in server/grader.py (FROZEN — do not modify).
 - Dense step rewards are in server/reward.py (already calibrated — modify only if PCSE phenology requires window adjustments).
 - Inference client/agent is in inference.py.
-- Current code already works, 33 tests pass, and docs are updated.
+- Current code already works, 48 tests pass, and docs are updated.
 - You must preserve determinism, OpenEnv compatibility, and the existing grader/reward/task structure.
 
 Current calibration targets to preserve:
@@ -436,8 +438,8 @@ Current calibration targets to preserve:
 - Fertilizer windows: DVS 0.20-0.40 (peak 0.30), DVS 0.50-0.70 (peak 0.60)
 - Late-harvest penalty slope: -0.20/DVS, floor -0.25
 - Intent/delta blend: 0.4/0.6 (validated)
-- Baseline scores (seed=42): Task1=0.8442, Task2=0.8155, Task3=0.7046
-- 33 passing tests
+- Baseline scores (seed=42): Task1=0.8442, Task2=0.8155, Task3=0.7026
+- 48 passing tests
 
 Hackathon constraints:
 - vcpu=2, 8GB RAM, no GPU
@@ -474,7 +476,7 @@ Phase 3: Build custom deterministic WeatherDataProvider from existing weather di
 Phase 4: Bundle PCSE crop/soil/site parameters in the Docker image
 Phase 5: Map irrigate/fertilize actions to PCSE state manipulation
 Phase 6: Recalibrate compute_potential_yield using PCSE
-Phase 7: Verify all 33 tests pass, difficulty ordering holds, scores remain within ±0.05
+Phase 7: Verify all 48 tests pass, difficulty ordering holds, scores remain within ±0.05
 Phase 8: Update Docker, requirements.txt, and documentation
 
 Expected output:
@@ -499,7 +501,7 @@ Do ONLY Phase 1 and Phase 2:
 - use a custom WeatherDataProvider wrapping the existing weather dicts
 - keep n_factor as the current linear model (do not integrate WOFOST-NPK yet)
 - do not yet migrate scenario generation or target yield calibration
-- leave the project in a compilable state where all 33 tests pass
+- leave the project in a compilable state where all 48 tests pass
 - document exactly what remains for full migration
 ```
 
@@ -515,7 +517,7 @@ Instead, build a hybrid adapter:
 - keep the current n_factor linear model entirely outside PCSE
 - preserve deterministic behavior and interface compatibility first
 - explain clearly which parts are true PCSE and which parts are wrapper-level approximations
-- run all 33 tests before declaring the adapter ready
+- run all 48 tests before declaring the adapter ready
 ```
 
 ## Prompting Guidance
@@ -539,12 +541,12 @@ When reviewing the PCSE adapter work, specifically check:
 - whether the final warning and fallback logic in inference.py remain untouched
 - whether Docker starts quickly (health check within 5 seconds) and answers `/health`
 - whether no unrelated files were refactored needlessly
-- whether all 33 tests pass without test modifications
+- whether all 48 tests pass without test modifications
 
 ## Future Validation Checklist
 
 Run these after migration:
-- `python -m pytest tests/ -v` — all 33 tests pass
+- `python -m pytest tests/ -v` — all 48 tests pass
 - `python benchmark_sweep.py` — multi-seed score sampling for tasks 1, 2, 3
 - local server start via `python -m uvicorn server.app:app --host 0.0.0.0 --port 8000`
 - `python inference.py` — completes within 20 minutes, prints === RESULTS ===
@@ -555,7 +557,7 @@ Run these after migration:
 ## Current Decision
 
 As of now, the project remains on the custom simulator because it is:
-- stable and well-tested (33 passing tests)
+- stable and well-tested (48 passing tests)
 - deterministic
 - easier to debug (~200 lines of transparent Python)
 - already calibrated (reward slopes, DVS windows, yield targets)
