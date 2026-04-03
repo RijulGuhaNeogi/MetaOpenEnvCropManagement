@@ -167,6 +167,25 @@ class CropSimulator:
             })
         return forecast
 
+    def _heat_stress_factor(self, tmax: float) -> float:
+        """Temperature penalty on growth during heat-sensitive stages.
+
+        Flowering remains the most heat-sensitive stage due to pollen sterility.
+        Grain fill also suffers under sustained heat, but with a milder bounded
+        penalty so the benchmark remains trainable and deterministic.
+        """
+        heat_factor = 1.0
+
+        # Pollen sterility above 35 C during flowering is the strongest penalty.
+        if tmax > 35.0 and 0.8 < self.dvs < 1.2:
+            heat_factor = min(heat_factor, max(0.3, 1.0 - (tmax - 35.0) * 0.15))
+
+        # Kernel fill also suffers above ~32 C, but with a milder bounded effect.
+        if tmax > 32.0 and 1.0 <= self.dvs < 1.5:
+            heat_factor = min(heat_factor, max(0.8, 1.0 - (tmax - 32.0) * 0.035))
+
+        return heat_factor
+
     def advance(self, days: int, irrigation_cm: float = 0.0, n_kg_ha: float = 0.0):
         """Advance the simulation by N days with optional interventions."""
         # Apply nitrogen
@@ -210,10 +229,7 @@ class CropSimulator:
         water_stress = self._water_stress()
 
         # --- Heat stress (realistic for semi-arid climates like Punjab) ---
-        # Wheat pollen sterility above 35°C during flowering (DVS 0.8-1.2)
-        heat_factor = 1.0
-        if w["tmax"] > 35.0 and 0.8 < self.dvs < 1.2:
-            heat_factor = max(0.3, 1.0 - (w["tmax"] - 35.0) * 0.15)
+        heat_factor = self._heat_stress_factor(w["tmax"])
 
         # --- Biomass growth ---
         par = 0.5 * w["radiation"]  # PAR approx 50% of total radiation

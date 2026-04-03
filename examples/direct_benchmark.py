@@ -5,14 +5,7 @@ Useful when validating environment logic or comparing policy changes.
 """
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
-_REPO_ROOT = Path(__file__).resolve().parent.parent
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
-
-from benchmark_sweep import build_result
+from agent.benchmark_sweep import build_result
 
 
 def main() -> None:

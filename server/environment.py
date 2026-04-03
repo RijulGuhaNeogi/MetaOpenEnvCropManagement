@@ -21,6 +21,7 @@ from typing import Any, Optional
 from openenv.core.env_server.interfaces import Environment
 
 from models import CropAction, CropObservation, CropState
+from models import ControlFeatures, CropStatus, ResourcesUsed, SoilStatus
 from server.crop_sim import CropSimulator
 from server.grader import grade_episode
 from server.reward import (
@@ -39,6 +40,8 @@ MAX_STEPS = 60
 class CropEnvironment(
     Environment[CropAction, CropObservation, CropState]
 ):
+    SUPPORTS_CONCURRENT_SESSIONS = True
+
     def __init__(self) -> None:
         super().__init__()
         self._sim: Optional[CropSimulator] = None
@@ -263,6 +266,8 @@ class CropEnvironment(
             total_cost=self._state.total_cost,
             budget=self._state.budget,
         )
+        # Blend: 40% agronomic intent, 60% observed state change.
+        # Validated against harvest_hesitation and drought_rescue probes.
         step_reward = 0.4 * intent_reward + 0.6 * delta_reward
         step_metadata = self._step_metadata(
             intent_reward=intent_reward,
@@ -466,21 +471,21 @@ class CropEnvironment(
             instructions=task["instructions"],
             day=sim.current_day,
             days_remaining=max(0, scenario["max_duration"] - sim.current_day),
-            crop_status={
-                "dvs": round(sim.dvs, 3),
-                "lai": round(sim.lai, 2),
-                "tagp": round(sim.tagp, 1),
-                "twso": round(sim.twso, 1),
-                "growth_stage": sim.growth_stage_name(),
-            },
-            soil_status={
-                "sm": round(sim.sm, 3),
-                "water_deficit": sim.sm < 0.22,
-                "water_stress": round(sim._water_stress(), 3),
-                "n_availability": round(sim.n_factor, 3),
-                "field_capacity": scenario["soil_params"].field_capacity,
-                "wilting_point": scenario["soil_params"].wilting_point,
-            },
+            crop_status=CropStatus(
+                dvs=round(sim.dvs, 3),
+                lai=round(sim.lai, 2),
+                tagp=round(sim.tagp, 1),
+                twso=round(sim.twso, 1),
+                growth_stage=sim.growth_stage_name(),
+            ),
+            soil_status=SoilStatus(
+                sm=round(sim.sm, 3),
+                water_deficit=sim.sm < 0.22,
+                water_stress=round(sim._water_stress(), 3),
+                n_availability=round(sim.n_factor, 3),
+                field_capacity=scenario["soil_params"].field_capacity,
+                wilting_point=scenario["soil_params"].wilting_point,
+            ),
             weather_today={
                 "tmax": weather_today["tmax"],
                 "tmin": weather_today["tmin"],
@@ -488,14 +493,14 @@ class CropEnvironment(
                 "radiation": weather_today["radiation"],
             },
             weather_forecast=weather_forecast,
-            resources_used={
-                "total_water_cm": round(sim.total_water, 2),
-                "total_n_kg_ha": round(sim.total_n, 2),
-                "total_cost": round(self._state.total_cost, 2),
-                "budget_remaining": round(budget_remaining, 2),
-                "irrigation_cost_per_cm": scenario["irrigation_cost"],
-                "fertilizer_cost_per_kg": scenario["fertilizer_cost"],
-            },
+            resources_used=ResourcesUsed(
+                total_water_cm=round(sim.total_water, 2),
+                total_n_kg_ha=round(sim.total_n, 2),
+                total_cost=round(self._state.total_cost, 2),
+                budget_remaining=round(budget_remaining, 2),
+                irrigation_cost_per_cm=scenario["irrigation_cost"],
+                fertilizer_cost_per_kg=scenario["fertilizer_cost"],
+            ),
             season_summary={
                 "crop_name": scenario["crop_name"],
                 "location": scenario["location"],
@@ -504,20 +509,20 @@ class CropEnvironment(
                 "step_days": scenario["step_days"],
                 "probe_name": scenario.get("probe_name"),
             },
-            control_features={
-                "moisture_gap_to_target": moisture_gap_to_target,
-                "forecast_rain_3d": forecast_rain_3d,
-                "forecast_rain_7d": forecast_rain_7d,
-                "days_since_last_irrigation": days_since_last_irrigation,
-                "days_since_last_fertilization": days_since_last_fertilization,
-                "fertilizer_events_count": self._state.fertilizer_events_count,
-                "cumulative_n_applied": round(sim.total_n, 2),
-                "rooting_depth_cm": round(scenario["soil_params"].rooting_depth_mm / 10.0, 1),
-                "estimated_budget_to_finish": estimated_budget_to_finish,
-                "budget_remaining_ratio": round(
+            control_features=ControlFeatures(
+                moisture_gap_to_target=moisture_gap_to_target,
+                forecast_rain_3d=forecast_rain_3d,
+                forecast_rain_7d=forecast_rain_7d,
+                days_since_last_irrigation=days_since_last_irrigation,
+                days_since_last_fertilization=days_since_last_fertilization,
+                fertilizer_events_count=self._state.fertilizer_events_count,
+                cumulative_n_applied=round(sim.total_n, 2),
+                rooting_depth_cm=round(scenario["soil_params"].rooting_depth_mm / 10.0, 1),
+                estimated_budget_to_finish=estimated_budget_to_finish,
+                budget_remaining_ratio=round(
                     budget_remaining / max(self._state.budget, 1.0), 3
                 ),
-                "dvs_distance_to_next_fertilizer_window": dvs_distance_to_next_window,
-            },
+                dvs_distance_to_next_fertilizer_window=dvs_distance_to_next_window,
+            ),
             conflicts=conflicts or [],
         )

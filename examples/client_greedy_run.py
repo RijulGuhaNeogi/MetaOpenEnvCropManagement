@@ -6,15 +6,9 @@ This mirrors the real OpenEnv client path rather than the direct benchmark path.
 from __future__ import annotations
 
 import argparse
-import sys
-from pathlib import Path
-
-_REPO_ROOT = Path(__file__).resolve().parent.parent
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
 
 from client import CropEnvClient
-from inference import greedy_action
+from agent.inference import greedy_action
 from models import CropAction
 
 

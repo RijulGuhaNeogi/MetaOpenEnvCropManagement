@@ -18,7 +18,6 @@ import argparse
 import json
 import os
 import re
-import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -265,12 +264,12 @@ def greedy_action(obs, fert_stages_done: set) -> dict:
     fc = obs.weather_forecast
     cf = obs.control_features
 
-    dvs = cs.get("dvs", 0.0)
-    sm = ss.get("sm", 0.3)
-    budget_remaining = ru.get("budget_remaining", 0.0)
-    irrig_cost = ru.get("irrigation_cost_per_cm", 2.0)
-    fert_cost = ru.get("fertilizer_cost_per_kg", 1.5)
-    rooting_depth_cm = cf.get("rooting_depth_cm", 90.0)
+    dvs = cs.dvs
+    sm = ss.sm
+    budget_remaining = ru.budget_remaining
+    irrig_cost = ru.irrigation_cost_per_cm
+    fert_cost = ru.fertilizer_cost_per_kg
+    rooting_depth_cm = cf.rooting_depth_cm
 
     # Check if rain is coming in next 2 days
     rain_coming = False
@@ -436,9 +435,9 @@ def run():
                     act_str += f"({action.amount:.1f})"
                 print(
                     f"  Step {step_num}: {act_str} | "
-                    f"DVS={obs.crop_status.get('dvs', 0):.3f} "
-                    f"SM={obs.soil_status.get('sm', 0):.3f} "
-                    f"Yield={obs.crop_status.get('twso', 0):.0f} | "
+                    f"DVS={obs.crop_status.dvs:.3f} "
+                    f"SM={obs.soil_status.sm:.3f} "
+                    f"Yield={obs.crop_status.twso:.0f} | "
                     f"reward={rew_str} done={result.done}"
                 )
 

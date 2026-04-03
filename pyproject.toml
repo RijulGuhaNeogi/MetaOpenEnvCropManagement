@@ -20,10 +20,10 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest", "httpx"]
 
-# Setuptools: models.py, client.py, inference.py are top-level modules
-# alongside the `server` package.
+# Setuptools: models.py, client.py are top-level modules
+# alongside the `server` and `agent` packages.
 [tool.setuptools.packages.find]
-include = ["server*"]
+include = ["server*", "agent*"]
 
 [tool.setuptools]
-py-modules = ["benchmark_sweep", "models", "client", "inference", "training_adapter"]
+py-modules = ["models", "client"]

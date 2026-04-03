@@ -97,6 +97,8 @@ def compute_step_reward(
         return _clamp(-0.02 - 0.0006 * amount, -0.06, -0.01)
 
     elif action_type == "harvest":
+        # NOTE: This branch is for standalone callers. The environment's
+        # terminal harvest path uses compute_trajectory_reward(grade) directly.
         if 1.8 <= dvs <= 2.05:
             return 0.20   # Optimal harvest window
         elif 1.5 <= dvs < 1.8:
@@ -104,7 +106,7 @@ def compute_step_reward(
         elif dvs < 1.5:
             return -0.30  # Way too early
         # DVS > 2.05 — late harvest, grain shattering risk
-        return max(-0.15, -0.05 * (dvs - 2.05) - 0.05)
+        return max(-0.25, -0.20 * (dvs - 2.05) - 0.05)
 
     return 0.0
 

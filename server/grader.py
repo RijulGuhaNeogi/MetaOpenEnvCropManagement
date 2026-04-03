@@ -87,7 +87,7 @@ def grade_episode(
 
     # ---------------------------------------------------------------
     # Metric 5: Harvest timing (0-1)
-    # Optimal: DVS in [1.8, 2.0]
+    # Optimal: DVS in [1.8, 2.05]
     # ---------------------------------------------------------------
     if not harvested:
         harvest_timing = 0.0

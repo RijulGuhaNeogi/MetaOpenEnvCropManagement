@@ -29,7 +29,7 @@ TASKS = {
             "+ 0.15×timing_quality + 0.12×harvest_timing. "
             "Yield = actual/target. Water efficiency = 1 - water_used/50cm. "
             "Cost efficiency = 1 - cost/budget. Timing = proximity of fertilization "
-            "to DVS 0.3 and 0.6. Harvest timing = penalty if DVS outside [1.8, 2.0]."
+            "to DVS 0.3 and 0.6. Harvest timing = penalty if DVS outside [1.8, 2.05]."
         ),
     },
     2: {
@@ -51,7 +51,7 @@ TASKS = {
             "+ 0.15×timing_quality + 0.12×harvest_timing. "
             "Yield = actual/target. Water efficiency = 1 - water_used/50cm. "
             "Cost efficiency = 1 - cost/budget. Timing = proximity of fertilization "
-            "to DVS 0.3 and 0.6. Harvest timing = penalty if DVS outside [1.8, 2.0]."
+            "to DVS 0.3 and 0.6. Harvest timing = penalty if DVS outside [1.8, 2.05]."
         ),
     },
     3: {
@@ -66,7 +66,7 @@ TASKS = {
             "irrigation event is expensive. You must make every dollar count: irrigate "
             "only when soil moisture is critically low (< 0.20) and no rain is expected, "
             "fertilize precisely at DVS ~0.3 and ~0.6 with minimal amounts, and harvest "
-            "at optimal maturity (DVS 1.8-2.0). Wasteful spending leaves no budget for "
+            "at optimal maturity (DVS 1.8-2.05). Wasteful spending leaves no budget for "
             "critical late-season irrigation. "
             "Actions: irrigate (amount in cm), fertilize (amount in kg N/ha), harvest, "
             "or wait. "
@@ -75,7 +75,7 @@ TASKS = {
             "+ 0.15×timing_quality + 0.12×harvest_timing. "
             "Yield = actual/target. Water efficiency = 1 - water_used/50cm. "
             "Cost efficiency = 1 - cost/budget. Timing = proximity of fertilization "
-            "to DVS 0.3 and 0.6. Harvest timing = penalty if DVS outside [1.8, 2.0]."
+            "to DVS 0.3 and 0.6. Harvest timing = penalty if DVS outside [1.8, 2.05]."
         ),
     },
 }

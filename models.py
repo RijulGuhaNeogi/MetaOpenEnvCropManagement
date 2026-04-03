@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from pydantic import Field
+from pydantic import BaseModel, Field
 from openenv.core.env_server.types import Action, Observation, State
 
 
@@ -29,6 +29,55 @@ class CropAction(Action):
     """
     action_type: str = "wait"
     amount: float = 0.0
+
+
+# ---------------------------------------------------------------------------
+# Typed observation sub-models
+# ---------------------------------------------------------------------------
+
+
+class CropStatus(BaseModel):
+    """Crop growth state."""
+    dvs: float = 0.0
+    lai: float = 0.0
+    tagp: float = 0.0
+    twso: float = 0.0
+    growth_stage: str = ""
+
+
+class SoilStatus(BaseModel):
+    """Soil moisture and nutrient state."""
+    sm: float = 0.0
+    water_deficit: bool = False
+    water_stress: float = 0.0
+    n_availability: float = 0.0
+    field_capacity: float = 0.0
+    wilting_point: float = 0.0
+
+
+class ResourcesUsed(BaseModel):
+    """Cumulative resource usage and budget."""
+    total_water_cm: float = 0.0
+    total_n_kg_ha: float = 0.0
+    total_cost: float = 0.0
+    budget_remaining: float = 0.0
+    irrigation_cost_per_cm: float = 0.0
+    fertilizer_cost_per_kg: float = 0.0
+
+
+class ControlFeatures(BaseModel):
+    """Derived RL-facing features for policy consumption."""
+    moisture_gap_to_target: float = 0.0
+    forecast_rain_3d: float = 0.0
+    forecast_rain_7d: float = 0.0
+    days_since_last_irrigation: int = 0
+    days_since_last_fertilization: int = 0
+    fertilizer_events_count: int = 0
+    cumulative_n_applied: float = 0.0
+    rooting_depth_cm: float = 0.0
+    estimated_budget_to_finish: float = 0.0
+    budget_remaining_ratio: float = 0.0
+    dvs_distance_to_next_fertilizer_window: float = 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -49,14 +98,13 @@ class CropObservation(Observation):
     day: int = 0                  # Current simulation day since sowing
     days_remaining: int = 0       # Days left before season ends
 
-    # Nested dicts keep the observation flexible without rigid nesting models
-    crop_status: dict[str, Any] = Field(default_factory=dict)
-    soil_status: dict[str, Any] = Field(default_factory=dict)
+    crop_status: CropStatus = Field(default_factory=CropStatus)
+    soil_status: SoilStatus = Field(default_factory=SoilStatus)
     weather_today: dict[str, Any] = Field(default_factory=dict)
     weather_forecast: list[dict[str, Any]] = Field(default_factory=list)
-    resources_used: dict[str, Any] = Field(default_factory=dict)
+    resources_used: ResourcesUsed = Field(default_factory=ResourcesUsed)
     season_summary: dict[str, Any] = Field(default_factory=dict)
-    control_features: dict[str, Any] = Field(default_factory=dict)
+    control_features: ControlFeatures = Field(default_factory=ControlFeatures)
     conflicts: list[str] = Field(default_factory=list)
 
 

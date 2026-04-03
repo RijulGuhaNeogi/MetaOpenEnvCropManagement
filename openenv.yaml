@@ -32,7 +32,9 @@ api:
     - /step
     - /state
     - /tasks
+    - /baseline
     - /docs
+    - /ws
 
 evaluation:
   reward_range:
@@ -44,7 +46,7 @@ grading: normalized
 reproducible: true
 
 inference:
-  script: inference.py
+  script: agent/inference.py
   env_vars:
     - ENV_URL
     - API_BASE_URL

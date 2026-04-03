@@ -1,7 +1,7 @@
 """WebSocket client for the Crop Management OpenEnv.
 
 Extends the generic EnvClient to handle CropAction serialization and
-CropObservation / CropState deserialization. Used by inference.py for
+CropObservation / CropState deserialization. Used by agent/inference.py for
 multi-step episodes over WebSocket (the HTTP endpoints are stateless).
 
 Usage:

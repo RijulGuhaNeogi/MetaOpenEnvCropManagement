@@ -1,3 +1,16 @@
+---
+title: Crop Management Environment
+emoji: 🌾
+colorFrom: green
+colorTo: yellow
+sdk: docker
+pinned: false
+app_port: 7860
+base_path: /web
+tags:
+  - openenv
+---
+
 # Precision Agriculture Crop Management — OpenEnv
 
 > **Meta PyTorch OpenEnv Hackathon — Round 1 Submission**
@@ -26,8 +39,8 @@ The WOFOST-inspired crop growth simulator captures real agricultural dynamics: t
 
 ```
 +-------------+     WebSocket      +------------------+
-| inference.py | <---------------> |  server/app.py   |
-| (AI agent)   |                   |  (FastAPI server) |
+|   agent/    | <---------------> |  server/app.py   |
+| inference.py |                   |  (FastAPI server) |
 +-------------+                    +--------+---------+
        |                                    |
        v                                    v
@@ -83,14 +96,16 @@ The WOFOST-inspired crop growth simulator captures real agricultural dynamics: t
 |-------|------|-------------|
 | `day` | int | Current simulation day |
 | `days_remaining` | int | Days left in the season |
-| `crop_status` | dict | DVS (development stage 0→2), LAI, biomass, yield, growth stage name |
-| `soil_status` | dict | Soil moisture, water deficit flag, water stress (0-1), N availability (0-1), field capacity, wilting point |
+| `crop_status` | `CropStatus` | DVS (development stage 0→2), LAI, biomass, yield, growth stage name |
+| `soil_status` | `SoilStatus` | Soil moisture, water deficit flag, water stress (0-1), N availability (0-1), field capacity, wilting point |
 | `weather_today` | dict | Temperature (max/min), rainfall, radiation |
 | `weather_forecast` | list[dict] | 5-day forecast (with slight noise for realism) |
-| `resources_used` | dict | Total water, nitrogen, cost, budget remaining, unit costs |
+| `resources_used` | `ResourcesUsed` | Total water, nitrogen, cost, budget remaining, unit costs |
 | `season_summary` | dict | Crop name, location, target yield, budget, step size |
-| `control_features` | dict | Derived RL-facing features such as moisture gap, short-horizon rain sums, rooting depth, fertilizer-window distance, and budget ratio |
+| `control_features` | `ControlFeatures` | Derived RL-facing features (see below) |
 | `conflicts` | list[str] | Feedback on invalid actions |
+
+All typed sub-models (`CropStatus`, `SoilStatus`, `ResourcesUsed`, `ControlFeatures`) are Pydantic models with explicit field types, providing IDE autocomplete and serialization safety.
 
 ### Key control features
 
@@ -173,10 +188,18 @@ These scores are produced by the current greedy heuristic, which now uses defici
 
 ```
 MetaHackathonPrep/
+├── agent/
+│   ├── __init__.py         # Agent package marker
+│   ├── inference.py        # Greedy heuristic + LLM inference + optional trajectory export
+│   ├── training_adapter.py # Discrete RL action adapter for training-only workflows
+│   └── benchmark_sweep.py  # Reusable multi-seed greedy benchmark utility
+├── docs/
+│   ├── ARCHITECTURE.md     # Comprehensive architecture document
+│   ├── hackathonBriefing.md# Bootcamp alignment & checklist
+│   └── FUTURE_SCOPE_PCSE.md# PCSE migration plan
 ├── examples/
 │   ├── direct_benchmark.py # Minimal direct-environment benchmark example
 │   └── client_greedy_run.py# Minimal WebSocket client example
-├── benchmark_sweep.py      # Reusable multi-seed greedy benchmark utility
 ├── server/
 │   ├── __init__.py         # Package marker
 │   ├── app.py              # FastAPI server via create_app() + /tasks endpoint
@@ -188,11 +211,9 @@ MetaHackathonPrep/
 │   ├── tasks.py            # Task definitions (3 difficulty levels)
 │   └── Dockerfile          # Docker image for HuggingFace Spaces
 ├── tests/
-│   └── test_smoke.py       # Smoke + RL-focused tests (26 passing)
+│   └── test_smoke.py       # Smoke + RL-focused tests (33 passing)
 ├── models.py               # CropAction, CropObservation, CropState
 ├── client.py               # WebSocket EnvClient subclass
-├── inference.py            # Greedy heuristic + LLM inference + optional trajectory export
-├── training_adapter.py     # Discrete RL action adapter for training-only workflows
 ├── openenv.yaml            # OpenEnv environment metadata
 ├── pyproject.toml          # Package configuration
 ├── requirements.txt        # Python dependencies
@@ -213,6 +234,8 @@ The repo supports three primary workflows:
 - **Test path** — validate determinism, reward behavior, and policy regressions via the smoke suite
 
 Use the inference path when you want end-to-end OpenEnv behavior, the direct benchmark path when you want fast reproducible comparisons, and the test path when you want regression protection.
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full architecture documentation, data flow diagrams, and layer model.
 
 ---
 
@@ -262,13 +285,13 @@ HF_TOKEN=hf_your_token_here
 Then run:
 
 ```bash
-python inference.py
+python -m agent.inference
 ```
 
 Optional trajectory export:
 
 ```bash
-python inference.py --trajectory-output trajectories/run.jsonl
+python -m agent.inference --trajectory-output trajectories/run.jsonl
 ```
 
 This writes JSONL transitions with observation, action, reward, next observation, done flag, and metadata for offline RL or imitation-learning bootstrapping.
@@ -279,7 +302,7 @@ Or export the variables directly:
 export API_BASE_URL="https://router.huggingface.co/v1"
 export MODEL_NAME="meta-llama/Llama-3.1-8B-Instruct"
 export HF_TOKEN="hf_your_token_here"
-python inference.py
+python -m agent.inference
 ```
 
 > **Note:** If the LLM API returns 3+ consecutive errors (e.g. credit exhaustion), inference automatically falls back to the greedy heuristic for the rest of the episode and prints a warning at the end.
@@ -287,7 +310,7 @@ python inference.py
 ### Without LLM (heuristic baseline)
 
 ```bash
-python inference.py
+python -m agent.inference
 ```
 
 Minimal client example against a running server:
@@ -310,12 +333,38 @@ All variables can be set in a `.env` file in the project root (auto-loaded via `
 
 ---
 
-## Docker
+## Deployment
+
+### Hugging Face Spaces (Recommended)
+
+```bash
+# From the project directory (where openenv.yaml is located)
+openenv push
+
+# Or specify options
+openenv push --repo-id your-username/crop-management --private
+```
+
+The deployed Space provides:
+- Web Interface at `/web`
+- API Documentation at `/docs`
+- Health Check at `/health`
+- WebSocket at `/ws` for persistent sessions
+
+### Local Docker
 
 ```bash
 docker build -f server/Dockerfile -t crop-management .
 docker run -p 7860:7860 crop-management
-ENV_URL=http://localhost:7860 python inference.py
+ENV_URL=http://localhost:7860 python -m agent.inference
+```
+
+### Quick Baseline Check
+
+```bash
+# After server is running:
+curl http://localhost:8000/baseline
+# Returns deterministic greedy scores for all 3 tasks
 ```
 
 ## Testing
@@ -327,19 +376,19 @@ python -m pytest tests/test_smoke.py -q
 Direct-environment benchmark sweep:
 
 ```bash
-python benchmark_sweep.py --start-seed 42 --count 10
+python -m agent.benchmark_sweep --start-seed 42 --count 10
 ```
 
 Optional JSON output for scripting:
 
 ```bash
-python benchmark_sweep.py --start-seed 42 --count 10 --json
+python -m agent.benchmark_sweep --start-seed 42 --count 10 --json
 ```
 
 Optional JSON file export:
 
 ```bash
-python benchmark_sweep.py --start-seed 42 --count 10 --output benchmarks/sweep_42_10.json
+python -m agent.benchmark_sweep --start-seed 42 --count 10 --output benchmarks/sweep_42_10.json
 ```
 
 Minimal direct benchmark example:
@@ -373,7 +422,7 @@ Current test coverage includes:
 - passive-policy and extra-fertilizer regression checks
 - late-harvest boundary regression checks
 
-The current smoke suite has **26 passing tests**.
+The current smoke suite has **33 passing tests**.
 
 ## Limitations
 
@@ -396,7 +445,7 @@ These are useful for RL development but do not change the public task interface:
   - `budget_starvation`
   - `harvest_hesitation`
   - `drought_rescue`
-- **Discrete action adapter** in `training_adapter.py`
+- **Discrete action adapter** in `agent/training_adapter.py`
   - `wait`
   - `harvest`
   - `irrigate_small`, `irrigate_medium`, `irrigate_large`
@@ -414,7 +463,7 @@ The simulator implements key dynamics from the WOFOST (World Food Studies) model
 - **Biomass:** Light-use-efficiency model with PAR interception via LAI
 - **Water balance:** Rainfall + irrigation - evapotranspiration (Hargreaves ET)
 - **Water stress:** Reduces growth when soil moisture drops below threshold
-- **Heat stress:** Above 35°C during flowering (DVS 0.8–1.2), pollen sterility reduces growth up to 70%
+- **Heat stress:** Extreme heat sharply penalizes flowering and sustained heat mildly penalizes grain fill, with bounded deterministic effects strongest in hot scenarios like Punjab
 - **Nitrogen response:** Fertilization increases growth factor (0.3→1.0); phenology-aware depletion (slow pre-anthesis, fast post-anthesis)
 - **Partitioning:** DVS-dependent allocation to storage organs (grain yield)
 - **Senescence:** Realistic LAI decline after DVS > 1.5 (~7-10 day period)
