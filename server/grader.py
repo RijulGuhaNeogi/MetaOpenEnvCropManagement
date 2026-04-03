@@ -17,6 +17,19 @@ from __future__ import annotations
 
 from typing import Any
 
+from server.constants import (
+    FERT_TARGET_DVS_1,
+    FERT_TARGET_DVS_2,
+    HARVEST_DVS_HIGH,
+    HARVEST_DVS_LOW,
+    MAX_WATER_CM,
+    WEIGHT_COST,
+    WEIGHT_HARVEST,
+    WEIGHT_TIMING,
+    WEIGHT_WATER,
+    WEIGHT_YIELD,
+)
+
 
 def grade_episode(
     actual_yield: float,
@@ -47,7 +60,7 @@ def grade_episode(
     # Metric 2: Water efficiency (0-1)
     # Less water = better. Max reasonable water ~50cm for wheat season.
     # ---------------------------------------------------------------
-    max_water = 50.0  # cm — wasteful upper bound
+    max_water = MAX_WATER_CM  # cm — wasteful upper bound
     if total_water <= 0:
         water_efficiency = 1.0  # No irrigation = best water efficiency
     else:
@@ -74,8 +87,8 @@ def grade_episode(
         for fa in fert_actions:
             dvs_at = fa.get("dvs", 0.0)
             # Distance to nearest target stage (0.3 or 0.6)
-            dist_to_03 = abs(dvs_at - 0.3)
-            dist_to_06 = abs(dvs_at - 0.6)
+            dist_to_03 = abs(dvs_at - FERT_TARGET_DVS_1)
+            dist_to_06 = abs(dvs_at - FERT_TARGET_DVS_2)
             best_dist = min(dist_to_03, dist_to_06)
             # Perfect at target = 1.0, degrades with distance
             score = max(0.0, 1.0 - best_dist / 0.5)
@@ -91,17 +104,17 @@ def grade_episode(
     # ---------------------------------------------------------------
     if not harvested:
         harvest_timing = 0.0
-    elif 1.8 <= harvest_dvs <= 2.05:
+    elif HARVEST_DVS_LOW <= harvest_dvs <= HARVEST_DVS_HIGH:
         harvest_timing = 1.0
-    elif 1.6 <= harvest_dvs < 1.8:
+    elif 1.6 <= harvest_dvs < HARVEST_DVS_LOW:
         # Slightly early
         harvest_timing = 0.5 + 0.5 * (harvest_dvs - 1.6) / 0.2
     elif harvest_dvs < 1.6:
         # Too early — linear penalty
         harvest_timing = max(0.0, harvest_dvs / 1.6 * 0.5)
     else:
-        # DVS > 2.05 — slight penalty for late harvest
-        harvest_timing = max(0.5, 1.0 - (harvest_dvs - 2.05) * 2.0)
+        # DVS > HARVEST_DVS_HIGH — slight penalty for late harvest
+        harvest_timing = max(0.5, 1.0 - (harvest_dvs - HARVEST_DVS_HIGH) * 2.0)
 
     # ---------------------------------------------------------------
     # Unified scoring formula (same for ALL tasks)
@@ -112,11 +125,11 @@ def grade_episode(
     # organically lower the score.
     # ---------------------------------------------------------------
     raw = (
-        0.35 * yield_score
-        + 0.20 * water_efficiency
-        + 0.18 * cost_efficiency
-        + 0.15 * timing_quality
-        + 0.12 * harvest_timing
+        WEIGHT_YIELD * yield_score
+        + WEIGHT_WATER * water_efficiency
+        + WEIGHT_COST * cost_efficiency
+        + WEIGHT_TIMING * timing_quality
+        + WEIGHT_HARVEST * harvest_timing
     )
 
     final = max(0.0, min(1.0, round(raw, 4)))

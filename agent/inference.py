@@ -110,10 +110,10 @@ def compress_observation(obs) -> str:
     lines = [
         f"Task: {obs.task_name} | Day {obs.day}/{obs.day + obs.days_remaining}",
         f"Crop: {sm.get('crop_name', 'wheat')} at {sm.get('location', '?')}",
-        f"Growth: DVS={cs.get('dvs', 0):.3f} stage={cs.get('growth_stage', '?')} "
-        f"LAI={cs.get('lai', 0):.2f} Yield={cs.get('twso', 0):.0f} kg/ha",
-        f"Soil: moisture={ss.get('sm', 0):.3f} deficit={ss.get('water_deficit', False)} "
-        f"water_stress={ss.get('water_stress', 1.0):.2f} n_avail={ss.get('n_availability', 0.5):.2f}",
+        f"Growth: DVS={cs.dvs:.3f} stage={cs.growth_stage} "
+        f"LAI={cs.lai:.2f} Yield={cs.twso:.0f} kg/ha",
+        f"Soil: moisture={ss.sm:.3f} deficit={ss.water_deficit} "
+        f"water_stress={ss.water_stress:.2f} n_avail={ss.n_availability:.2f}",
         f"Weather today: tmax={wt.get('tmax', 0)}°C tmin={wt.get('tmin', 0)}°C "
         f"rain={wt.get('rain', 0)} cm rad={wt.get('radiation', 0)} MJ/m2",
     ]
@@ -130,20 +130,20 @@ def compress_observation(obs) -> str:
         lines.append("Forecast:\n" + "\n".join(fc_lines))
 
     lines.append(
-        f"Resources: water={ru.get('total_water_cm', 0):.1f}cm "
-        f"N={ru.get('total_n_kg_ha', 0):.1f}kg "
-        f"cost=${ru.get('total_cost', 0):.1f} "
-        f"remaining=${ru.get('budget_remaining', 0):.1f}"
+        f"Resources: water={ru.total_water_cm:.1f}cm "
+        f"N={ru.total_n_kg_ha:.1f}kg "
+        f"cost=${ru.total_cost:.1f} "
+        f"remaining=${ru.budget_remaining:.1f}"
     )
     if cf:
         lines.append(
             "Control: "
-            f"moist_gap={cf.get('moisture_gap_to_target', 0)} "
-            f"rain3d={cf.get('forecast_rain_3d', 0)}cm "
-            f"rain7d={cf.get('forecast_rain_7d', 0)}cm "
-            f"budget_ratio={cf.get('budget_remaining_ratio', 0)} "
-            f"root_depth={cf.get('rooting_depth_cm', 90)}cm "
-            f"next_fert_window={cf.get('dvs_distance_to_next_fertilizer_window', 0)}"
+            f"moist_gap={cf.moisture_gap_to_target} "
+            f"rain3d={cf.forecast_rain_3d}cm "
+            f"rain7d={cf.forecast_rain_7d}cm "
+            f"budget_ratio={cf.budget_remaining_ratio} "
+            f"root_depth={cf.rooting_depth_cm}cm "
+            f"next_fert_window={cf.dvs_distance_to_next_fertilizer_window}"
         )
     lines.append(f"Target yield: {sm.get('target_yield', 0):.0f} kg/ha")
 
@@ -237,16 +237,26 @@ def call_llm(obs) -> dict:
 # ---------------------------------------------------------------------------
 
 # Agronomic thresholds tuned for the three task scenarios
-SM_IRRIGATE_THRESHOLD = 0.22    # Soil moisture below this = dry
+from server.constants import (
+    FERT_TARGET_KG_1,
+    FERT_TARGET_KG_2,
+    FERT_WINDOW_1,
+    FERT_WINDOW_2,
+    HARVEST_DVS_LOW,
+    SM_TARGET_HIGH,
+    SM_WATER_DEFICIT,
+)
+
+SM_IRRIGATE_THRESHOLD = SM_WATER_DEFICIT  # Soil moisture below this = dry
 SM_CRITICAL_THRESHOLD = 0.18    # Soil moisture below this = critically dry
 RAIN_THRESHOLD_CM = 0.3         # Rain forecast above this = skip irrigation
-HARVEST_DVS = 1.8               # Minimum DVS for harvest
-TARGET_SM = 0.30                # Soil moisture target for irrigation dosing
+HARVEST_DVS = HARVEST_DVS_LOW   # Minimum DVS for harvest
+TARGET_SM = (SM_TARGET_HIGH + 0.28) / 2  # Soil moisture target for irrigation dosing
 MAX_IRRIGATION_CM = 5.0         # Do not irrigate more than this in one step
-FERT_STAGE1_DVS = (0.27, 0.40)  # DVS range for first fertilization
-FERT_STAGE2_DVS = (0.57, 0.70)  # DVS range for second fertilization
-FERT_STAGE1_KG = 18.0           # kg N/ha for first application
-FERT_STAGE2_KG = 15.0           # kg N/ha for second application
+FERT_STAGE1_DVS = (FERT_WINDOW_1[0] + 0.07, FERT_WINDOW_1[1])  # DVS range for first fertilization
+FERT_STAGE2_DVS = (FERT_WINDOW_2[0] + 0.07, FERT_WINDOW_2[1])  # DVS range for second fertilization
+FERT_STAGE1_KG = FERT_TARGET_KG_1  # kg N/ha for first application
+FERT_STAGE2_KG = FERT_TARGET_KG_2  # kg N/ha for second application
 
 
 def greedy_action(obs, fert_stages_done: set) -> dict:

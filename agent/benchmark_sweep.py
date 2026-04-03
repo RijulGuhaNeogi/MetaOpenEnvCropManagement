@@ -9,14 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
-from pathlib import Path
 from statistics import mean, pstdev
-
-# Ensure repo root is on sys.path for imports when running from agent/
-_repo_root = str(Path(__file__).resolve().parent.parent)
-if _repo_root not in sys.path:
-    sys.path.insert(0, _repo_root)
 
 from agent.inference import greedy_action
 from models import CropAction

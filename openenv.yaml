@@ -52,6 +52,7 @@ inference:
     - API_BASE_URL
     - MODEL_NAME
     - HF_TOKEN
+    - TRAJECTORY_OUTPUT
 
 requirements:
   python: ">=3.11"

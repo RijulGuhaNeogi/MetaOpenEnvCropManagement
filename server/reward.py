@@ -14,16 +14,30 @@ Design principles (informed by OpenEnv bootcamp):
 """
 from __future__ import annotations
 
+from server.constants import (
+    FERT_TARGET_DVS_1,
+    FERT_TARGET_DVS_2,
+    FERT_TARGET_KG_1,
+    FERT_TARGET_KG_2,
+    FERT_WINDOW_1,
+    FERT_WINDOW_2,
+    HARVEST_DVS_HIGH,
+    HARVEST_DVS_LOW,
+    MAX_WATER_CM,
+    SM_TARGET_HIGH,
+    SM_TARGET_LOW,
+)
+
 
 def _clamp(value: float, lower: float, upper: float) -> float:
     return max(lower, min(upper, value))
 
 
 def _fertilizer_window_target(dvs: float) -> tuple[float | None, float | None, float]:
-    if 0.20 <= dvs <= 0.40:
-        return 18.0, 0.30, 0.14
-    if 0.50 <= dvs <= 0.70:
-        return 15.0, 0.60, 0.12
+    if FERT_WINDOW_1[0] <= dvs <= FERT_WINDOW_1[1]:
+        return FERT_TARGET_KG_1, FERT_TARGET_DVS_1, 0.14
+    if FERT_WINDOW_2[0] <= dvs <= FERT_WINDOW_2[1]:
+        return FERT_TARGET_KG_2, FERT_TARGET_DVS_2, 0.12
     return None, None, 0.0
 
 
@@ -38,8 +52,8 @@ def compute_step_reward(
     total_water: float = 0.0,
     forecast_rain: float = 0.0,
     root_zone_depth_cm: float = 90.0,
-    target_sm_low: float = 0.28,
-    target_sm_high: float = 0.32,
+    target_sm_low: float = SM_TARGET_LOW,
+    target_sm_high: float = SM_TARGET_HIGH,
 ) -> float:
     """Dense per-step reward based on agronomic correctness.
 
@@ -52,7 +66,7 @@ def compute_step_reward(
     elif action_type == "irrigate":
         target_sm = (target_sm_low + target_sm_high) / 2.0
         desired_amount = max(0.0, (target_sm - sm) * root_zone_depth_cm)
-        water_pressure = min(0.04, max(0.0, total_water) / 50.0 * 0.04)
+        water_pressure = min(0.04, max(0.0, total_water) / MAX_WATER_CM * 0.04)
 
         if sm >= target_sm_high:
             return _clamp(-0.04 - 0.01 * amount, -0.14, -0.02)
@@ -99,14 +113,14 @@ def compute_step_reward(
     elif action_type == "harvest":
         # NOTE: This branch is for standalone callers. The environment's
         # terminal harvest path uses compute_trajectory_reward(grade) directly.
-        if 1.8 <= dvs <= 2.05:
+        if HARVEST_DVS_LOW <= dvs <= HARVEST_DVS_HIGH:
             return 0.20   # Optimal harvest window
-        elif 1.5 <= dvs < 1.8:
+        elif 1.5 <= dvs < HARVEST_DVS_LOW:
             return -0.15  # Early, yield loss
         elif dvs < 1.5:
             return -0.30  # Way too early
-        # DVS > 2.05 — late harvest, grain shattering risk
-        return max(-0.25, -0.20 * (dvs - 2.05) - 0.05)
+        # DVS > HARVEST_DVS_HIGH — late harvest, grain shattering risk
+        return max(-0.25, -0.20 * (dvs - HARVEST_DVS_HIGH) - 0.05)
 
     return 0.0
 
