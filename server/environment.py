@@ -41,7 +41,7 @@ MAX_STEPS = 60
 class CropEnvironment(
     Environment[CropAction, CropObservation, CropState]
 ):
-    SUPPORTS_CONCURRENT_SESSIONS = True
+    SUPPORTS_CONCURRENT_SESSIONS = False
 
     def __init__(self) -> None:
         super().__init__()
@@ -493,6 +493,7 @@ class CropEnvironment(
                 wilting_point=scenario["soil_params"].wilting_point,
             ),
             weather_today=WeatherDay(
+                day=sim.current_day,
                 tmax=weather_today["tmax"],
                 tmin=weather_today["tmin"],
                 rain=weather_today["rain"],

@@ -16,11 +16,12 @@ import random
 from typing import Any
 
 from server.crop_sim import (
-    CROP_LIBRARY,
-    PARTITION_TABLES,
-    SOIL_LIBRARY,
     CropSimulator,
     compute_potential_yield,
+)
+from server.crop_params import (
+    CROP_LIBRARY,
+    SOIL_LIBRARY,
 )
 
 
@@ -133,21 +134,21 @@ LOCATIONS = {
         "name": "Netherlands",
         "weather_fn": _generate_weather_netherlands,
         "soil": "clay_loam",
-        "crop": "wheat",
+        "crop": "wheat_nl",
         "max_duration": 280,
     },
     "punjab": {
         "name": "Punjab, India",
         "weather_fn": _generate_weather_punjab,
         "soil": "sandy_loam",
-        "crop": "wheat",
+        "crop": "wheat_punjab",
         "max_duration": 200,
     },
     "iowa": {
         "name": "Iowa, USA",
         "weather_fn": _generate_weather_iowa,
         "soil": "silt_loam",
-        "crop": "wheat",
+        "crop": "wheat_iowa",
         "max_duration": 260,
     },
 }
@@ -287,7 +288,6 @@ def _generate_easy(rng: random.Random, seed: int, target_yield: float) -> dict[s
     crop_name = loc["crop"]
     crop_params = CROP_LIBRARY[crop_name]
     soil_params = SOIL_LIBRARY[loc["soil"]]
-    partition_table = PARTITION_TABLES[crop_name]
     max_duration = loc["max_duration"]
 
     weather = loc["weather_fn"](random.Random(seed * 31 + 1), max_duration + 30)
@@ -296,7 +296,7 @@ def _generate_easy(rng: random.Random, seed: int, target_yield: float) -> dict[s
         "crop_name": crop_name,
         "crop_params": crop_params,
         "soil_params": soil_params,
-        "partition_table": partition_table,
+        "partition_table": crop_params.FOTB,
         "weather": weather,
         "location": loc["name"],
         "max_duration": max_duration,
@@ -314,7 +314,6 @@ def _generate_medium(rng: random.Random, seed: int, target_yield: float) -> dict
     crop_name = loc["crop"]
     crop_params = CROP_LIBRARY[crop_name]
     soil_params = SOIL_LIBRARY[loc["soil"]]
-    partition_table = PARTITION_TABLES[crop_name]
     max_duration = loc["max_duration"]
 
     weather = loc["weather_fn"](random.Random(seed * 37 + 2), max_duration + 30)
@@ -323,7 +322,7 @@ def _generate_medium(rng: random.Random, seed: int, target_yield: float) -> dict
         "crop_name": crop_name,
         "crop_params": crop_params,
         "soil_params": soil_params,
-        "partition_table": partition_table,
+        "partition_table": crop_params.FOTB,
         "weather": weather,
         "location": loc["name"],
         "max_duration": max_duration,
@@ -341,7 +340,6 @@ def _generate_hard(rng: random.Random, seed: int, target_yield: float) -> dict[s
     crop_name = loc["crop"]
     crop_params = CROP_LIBRARY[crop_name]
     soil_params = SOIL_LIBRARY[loc["soil"]]
-    partition_table = PARTITION_TABLES[crop_name]
     max_duration = loc["max_duration"]
 
     weather = loc["weather_fn"](random.Random(seed * 41 + 3), max_duration + 30)
@@ -350,7 +348,7 @@ def _generate_hard(rng: random.Random, seed: int, target_yield: float) -> dict[s
         "crop_name": crop_name,
         "crop_params": crop_params,
         "soil_params": soil_params,
-        "partition_table": partition_table,
+        "partition_table": crop_params.FOTB,
         "weather": weather,
         "location": loc["name"],
         "max_duration": max_duration,
