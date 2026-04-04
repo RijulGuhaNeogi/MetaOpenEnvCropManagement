@@ -119,6 +119,7 @@ class CropObservation(Observation):
     season_summary: dict[str, Any] = Field(default_factory=dict)
     control_features: ControlFeatures = Field(default_factory=ControlFeatures)
     conflicts: list[str] = Field(default_factory=list)
+    advisory_text: Optional[str] = None
     rubric_reward: float | None = None
 
 

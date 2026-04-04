@@ -4,6 +4,10 @@ Generates weather data, crop/soil parameters, and budget constraints
 programmatically. Same seed always produces the same scenario.
 No external API calls or data files — fully self-contained.
 
+Crop and soil parameters are loaded from YAML config files under configs/.
+If a YAML file is missing, the hardcoded profiles in crop_params.py are
+used as a fallback.
+
 Simplification: we focus on wheat across 3 climatic profiles:
   - Netherlands (mild, reliable rainfall)
   - Punjab, India (hot, dry, needs irrigation)
@@ -11,6 +15,7 @@ Simplification: we focus on wheat across 3 climatic profiles:
 """
 from __future__ import annotations
 
+import logging
 import math
 import random
 from typing import Any
@@ -22,7 +27,21 @@ from server.crop_sim import (
 from server.crop_params import (
     CROP_LIBRARY,
     SOIL_LIBRARY,
+    load_profile_from_yaml,
 )
+
+logger = logging.getLogger(__name__)
+
+
+def _load_params(crop_key: str, soil_key: str, yaml_file: str | None):
+    """Load crop + soil params from YAML, falling back to hardcoded profiles."""
+    if yaml_file is not None:
+        try:
+            crop_params, soil_params = load_profile_from_yaml(yaml_file)
+            return crop_params, soil_params
+        except Exception:
+            logger.debug("YAML %s not found, using hardcoded %s", yaml_file, crop_key)
+    return CROP_LIBRARY[crop_key], SOIL_LIBRARY[soil_key]
 
 
 # ---------------------------------------------------------------------------
@@ -135,6 +154,7 @@ LOCATIONS = {
         "weather_fn": _generate_weather_netherlands,
         "soil": "clay_loam",
         "crop": "wheat_nl",
+        "yaml": "wheat_nl.yaml",
         "max_duration": 280,
     },
     "punjab": {
@@ -142,6 +162,7 @@ LOCATIONS = {
         "weather_fn": _generate_weather_punjab,
         "soil": "sandy_loam",
         "crop": "wheat_punjab",
+        "yaml": "wheat_punjab.yaml",
         "max_duration": 200,
     },
     "iowa": {
@@ -149,6 +170,7 @@ LOCATIONS = {
         "weather_fn": _generate_weather_iowa,
         "soil": "silt_loam",
         "crop": "wheat_iowa",
+        "yaml": "wheat_iowa.yaml",
         "max_duration": 260,
     },
 }
@@ -286,8 +308,7 @@ def _generate_easy(rng: random.Random, seed: int, target_yield: float) -> dict[s
     """Netherlands wheat, generous budget, good rainfall."""
     loc = LOCATIONS["netherlands"]
     crop_name = loc["crop"]
-    crop_params = CROP_LIBRARY[crop_name]
-    soil_params = SOIL_LIBRARY[loc["soil"]]
+    crop_params, soil_params = _load_params(crop_name, loc["soil"], loc.get("yaml"))
     max_duration = loc["max_duration"]
 
     weather = loc["weather_fn"](random.Random(seed * 31 + 1), max_duration + 30)
@@ -312,8 +333,7 @@ def _generate_medium(rng: random.Random, seed: int, target_yield: float) -> dict
     """Iowa wheat, moderate budget, some drought risk."""
     loc = LOCATIONS["iowa"]
     crop_name = loc["crop"]
-    crop_params = CROP_LIBRARY[crop_name]
-    soil_params = SOIL_LIBRARY[loc["soil"]]
+    crop_params, soil_params = _load_params(crop_name, loc["soil"], loc.get("yaml"))
     max_duration = loc["max_duration"]
 
     weather = loc["weather_fn"](random.Random(seed * 37 + 2), max_duration + 30)
@@ -338,8 +358,7 @@ def _generate_hard(rng: random.Random, seed: int, target_yield: float) -> dict[s
     """Punjab wheat, tight budget, drought-prone."""
     loc = LOCATIONS["punjab"]
     crop_name = loc["crop"]
-    crop_params = CROP_LIBRARY[crop_name]
-    soil_params = SOIL_LIBRARY[loc["soil"]]
+    crop_params, soil_params = _load_params(crop_name, loc["soil"], loc.get("yaml"))
     max_duration = loc["max_duration"]
 
     weather = loc["weather_fn"](random.Random(seed * 41 + 3), max_duration + 30)

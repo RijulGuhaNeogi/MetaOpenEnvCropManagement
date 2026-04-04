@@ -279,3 +279,55 @@ def get_crop_params(crop_key: str) -> WOFOSTCropParams:
 def get_soil_params(soil_key: str) -> WOFOSTSoilParams:
     """Retrieve soil parameters by key.  Raises KeyError if not found."""
     return SOIL_LIBRARY[soil_key]
+
+
+# ── YAML loading ─────────────────────────────────────────────────────────
+
+import pathlib
+
+import yaml
+
+_CONFIGS_DIR = pathlib.Path(__file__).resolve().parent.parent / "configs"
+
+
+def load_profile_from_yaml(
+    yaml_path: str | pathlib.Path,
+) -> tuple[WOFOSTCropParams, WOFOSTSoilParams]:
+    """Load crop + soil parameters from a YAML config file.
+
+    Returns ``(WOFOSTCropParams, WOFOSTSoilParams)`` constructed from the
+    ``crop:`` and ``soil:`` sections of the file.  Any field not specified
+    in the YAML falls back to the dataclass default.
+
+    Raises ``FileNotFoundError`` if the path does not exist, ``KeyError``
+    if required top-level keys (``crop``, ``soil``) are missing.
+    """
+    path = pathlib.Path(yaml_path)
+    if not path.is_absolute():
+        path = _CONFIGS_DIR / path
+
+    with open(path, encoding="utf-8") as fh:
+        data = yaml.safe_load(fh)
+
+    crop_dict = dict(data["crop"])
+    soil_dict = dict(data["soil"])
+
+    # Convert FOTB list-of-lists → tuple-of-tuples for frozen dataclass
+    if "FOTB" in crop_dict:
+        crop_dict["FOTB"] = tuple(tuple(row) for row in crop_dict["FOTB"])
+
+    # Convert DVS window lists → tuples
+    for key in ("HEAT_FLOWER_DVS", "HEAT_GRAIN_DVS"):
+        if key in crop_dict:
+            crop_dict[key] = tuple(crop_dict[key])
+
+    crop_params = WOFOSTCropParams(**crop_dict)
+    soil_params = WOFOSTSoilParams(**soil_dict)
+    return crop_params, soil_params
+
+
+def list_available_configs() -> list[str]:
+    """Return basenames of YAML config files in the configs/ directory."""
+    if not _CONFIGS_DIR.is_dir():
+        return []
+    return sorted(p.stem for p in _CONFIGS_DIR.glob("*.yaml"))

@@ -5,3 +5,4 @@ uvicorn>=0.30
 openai>=1.0
 httpx>=0.25
 python-dotenv>=1.0
+pyyaml>=6.0

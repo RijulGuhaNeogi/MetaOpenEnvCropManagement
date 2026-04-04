@@ -151,6 +151,9 @@ def compress_observation(obs) -> str:
     if obs.conflicts:
         lines.append(f"Conflicts: {'; '.join(obs.conflicts)}")
 
+    if getattr(obs, "advisory_text", None):
+        lines.append(f"Advisory: {obs.advisory_text}")
+
     return "\n".join(lines)
 
 

@@ -1,0 +1,74 @@
+# ─────────────────────────────────────────────────────────────
+# Spring Wheat — Punjab, India (semi-arid calibration)
+# Source: Aggarwal & Kalra (1994)
+# ─────────────────────────────────────────────────────────────
+
+crop:
+  name: wheat
+  display_name: "Spring Wheat (Punjab, India)"
+  region: Punjab
+
+  # Phenology
+  TBASE: 0.0
+  TSUM1: 1050.0       # Aggarwal & Kalra (1994) — shorter under heat
+  TSUM2: 850.0        # Faster maturity
+
+  # Canopy
+  SLA0: 0.0022
+  LAIEM: 0.048
+  LAI_MAX: 5.0        # Heat limits canopy development
+  KDIF: 0.60
+  SENESCENCE_DVS: 1.5
+  SENESCENCE_RATE: 0.10
+
+  # Biomass
+  LUE: 2.6            # Slightly lower due to chronic heat stress
+
+  # Nitrogen
+  N_RECOV: 0.008
+  N_LOSS_PRE: 0.0003
+  N_LOSS_POST: 0.0020 # Faster N depletion in hot soils
+  N_FACTOR_FLOOR: 0.30
+  N_FACTOR_INIT: 0.55
+
+  # Heat stress — flowering (more sensitive in tropics)
+  HEAT_FLOWER_THRESH: 34.0
+  HEAT_FLOWER_SLOPE: 0.15
+  HEAT_FLOWER_FLOOR: 0.30
+  HEAT_FLOWER_DVS: [0.8, 1.2]
+
+  # Heat stress — grain fill
+  HEAT_GRAIN_THRESH: 31.0
+  HEAT_GRAIN_SLOPE: 0.035
+  HEAT_GRAIN_FLOOR: 0.80
+  HEAT_GRAIN_DVS: [1.0, 1.5]
+
+  # Evapotranspiration (Hargreaves)
+  ET_COEFF: 0.0023
+  ET_TCONST: 17.8
+  ET_RAD_CONV: 0.408
+  KC_MAX: 1.20
+  KC_BASE: 0.30
+  KC_LAI_SLOPE: 0.15
+
+  # Water stress (Feddes)
+  WS_RATIO_FULL: 0.6
+  WS_RATIO_MID: 0.2
+  WS_FLOOR: 0.1
+
+  # Partitioning table
+  FOTB:
+    - [0.0, 0.00]
+    - [0.5, 0.00]
+    - [1.0, 0.05]
+    - [1.3, 0.40]
+    - [1.6, 0.70]
+    - [2.0, 0.85]
+
+soil:
+  name: sandy_loam
+  display_name: "Sandy Loam"
+  SMFCF: 0.35
+  SMW: 0.10
+  SM_INIT: 0.28
+  RDMSOL: 80.0

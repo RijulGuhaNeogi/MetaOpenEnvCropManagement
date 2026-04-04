@@ -23,6 +23,7 @@ from openenv.core.env_server.interfaces import Environment
 
 from models import CropAction, CropObservation, CropState
 from models import ControlFeatures, CropStatus, ResourcesUsed, SoilStatus, WeatherDay
+from server.advisory import generate_advisory
 from server.crop_sim import CropSimulator
 from server.reward import (
     compute_delta_reward,
@@ -534,4 +535,24 @@ class CropEnvironment(
                 dvs_distance_to_next_fertilizer_window=dvs_distance_to_next_window,
             ),
             conflicts=conflicts or [],
+            advisory_text=generate_advisory(
+                day=sim.current_day,
+                days_remaining=max(0, scenario["max_duration"] - sim.current_day),
+                step_days=scenario["step_days"],
+                dvs=sim.dvs,
+                lai=sim.lai,
+                sm=sim.sm,
+                field_capacity=scenario["soil_params"].field_capacity,
+                wilting_point=scenario["soil_params"].wilting_point,
+                water_stress=sim._water_stress(),
+                n_availability=sim.n_factor,
+                weather_today_tmax=weather_today["tmax"],
+                forecast_rain_3d=forecast_rain_3d,
+                forecast_rain_7d=forecast_rain_7d,
+                total_water_cm=sim.total_water,
+                total_n_kg_ha=sim.total_n,
+                budget_remaining=budget_remaining,
+                budget_total=scenario["budget"],
+                location=scenario["location"],
+            ),
         )
