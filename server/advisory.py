@@ -18,6 +18,10 @@ from __future__ import annotations
 
 # ── Growth stage labels ──────────────────────────────────────────────────
 
+# DVS thresholds aligned with WOFOSTCropParams:
+#   HEAT_FLOWER_DVS = (0.8, 1.2)  — flowering heat-sensitivity window
+#   HEAT_GRAIN_DVS  = (1.0, 1.5)  — grain-fill heat-sensitivity window
+
 def _growth_stage_label(dvs: float) -> str:
     if dvs < 0.01:
         return "Pre-emergence"
@@ -25,11 +29,11 @@ def _growth_stage_label(dvs: float) -> str:
         return "Early vegetative (tillering)"
     elif dvs < 0.65:
         return "Late vegetative (stem elongation)"
-    elif dvs < 1.0:
+    elif dvs < 0.80:
         return "Booting / heading"
-    elif dvs < 1.3:
+    elif dvs < 1.20:
         return "Flowering (anthesis)"
-    elif dvs < 1.7:
+    elif dvs < 1.50:
         return "Grain filling"
     elif dvs < 2.0:
         return "Ripening"
@@ -116,9 +120,9 @@ def generate_advisory(
 
     parts.append(". ".join(weather_parts) + ".")
 
-    if weather_today_tmax > 35.0 and 0.7 < dvs < 1.3:
-        alerts.append(f"Extreme heat ({weather_today_tmax:.0f}°C) during heat-sensitive stage.")
-    elif weather_today_tmax > 33.0 and 1.0 <= dvs < 1.6:
+    if weather_today_tmax > 35.0 and 0.8 <= dvs < 1.2:
+        alerts.append(f"Extreme heat ({weather_today_tmax:.0f}°C) during flowering — pollen sterility risk.")
+    elif weather_today_tmax > 33.0 and 1.0 <= dvs < 1.5:
         alerts.append(f"High temperature ({weather_today_tmax:.0f}°C) during grain fill.")
 
     # ── Resources ──

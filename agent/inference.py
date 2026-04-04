@@ -245,6 +245,7 @@ def call_llm(obs) -> dict:
 
 # Agronomic thresholds tuned for the three task scenarios
 from server.constants import (
+    FERT_HEURISTIC_OFFSET,
     FERT_TARGET_KG_1,
     FERT_TARGET_KG_2,
     FERT_WINDOW_1,
@@ -261,8 +262,8 @@ RAIN_THRESHOLD_CM = 0.3         # Rain forecast above this = skip irrigation
 HARVEST_DVS = HARVEST_DVS_LOW   # Minimum DVS for harvest
 TARGET_SM = (SM_TARGET_HIGH + SM_TARGET_LOW) / 2  # Soil moisture target for irrigation dosing
 MAX_IRRIGATION_CM = 5.0         # Do not irrigate more than this in one step
-FERT_STAGE1_DVS = (FERT_WINDOW_1[0] + 0.07, FERT_WINDOW_1[1])  # DVS range for first fertilization
-FERT_STAGE2_DVS = (FERT_WINDOW_2[0] + 0.07, FERT_WINDOW_2[1])  # DVS range for second fertilization
+FERT_STAGE1_DVS = (FERT_WINDOW_1[0] + FERT_HEURISTIC_OFFSET, FERT_WINDOW_1[1])
+FERT_STAGE2_DVS = (FERT_WINDOW_2[0] + FERT_HEURISTIC_OFFSET, FERT_WINDOW_2[1])
 FERT_STAGE1_KG = FERT_TARGET_KG_1  # kg N/ha for first application
 FERT_STAGE2_KG = FERT_TARGET_KG_2  # kg N/ha for second application
 

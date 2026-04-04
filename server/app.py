@@ -42,9 +42,20 @@ def list_tasks():
     }
 
 
+_baseline_cache: dict | None = None
+
+
 @app.get("/baseline")
 def run_baseline():
-    """Run one greedy episode per task (seed=42) and return deterministic scores."""
+    """Return deterministic greedy scores for all tasks (seed=42).
+
+    Results are cached after first computation since they are fully
+    deterministic — same seed + same greedy policy = same scores.
+    """
+    global _baseline_cache
+    if _baseline_cache is not None:
+        return _baseline_cache
+
     from agent.inference import greedy_action as _greedy_action
 
     results = {}
@@ -65,11 +76,12 @@ def run_baseline():
         }
 
     scores = [r["score"] for r in results.values()]
-    return {
+    _baseline_cache = {
         "seed": 42,
         "tasks": results,
         "overall_mean": round(sum(scores) / len(scores), 4),
     }
+    return _baseline_cache
 
 
 if __name__ == "__main__":

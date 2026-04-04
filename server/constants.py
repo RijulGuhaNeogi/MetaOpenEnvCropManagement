@@ -8,6 +8,7 @@ are extracted here.
 # ---------------------------------------------------------------------------
 # Fertilizer DVS windows and target amounts
 # Used by: server/reward.py, agent/inference.py
+# CONSTRAINT: FERT_TARGET_DVS_N must lie within FERT_WINDOW_N
 # ---------------------------------------------------------------------------
 FERT_WINDOW_1 = (0.20, 0.40)       # DVS range for first fertilization
 FERT_WINDOW_2 = (0.50, 0.70)       # DVS range for second fertilization
@@ -15,6 +16,8 @@ FERT_TARGET_DVS_1 = 0.30           # Optimal DVS for first application
 FERT_TARGET_DVS_2 = 0.60           # Optimal DVS for second application
 FERT_TARGET_KG_1 = 18.0            # kg N/ha for first application
 FERT_TARGET_KG_2 = 15.0            # kg N/ha for second application
+FERT_HEURISTIC_OFFSET = 0.07       # Greedy heuristic shifts window start to avoid
+                                    # applying right at window boundary
 
 # ---------------------------------------------------------------------------
 # Soil moisture thresholds

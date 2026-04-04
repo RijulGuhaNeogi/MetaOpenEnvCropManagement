@@ -728,3 +728,51 @@ def test_advisory_text_present_and_deterministic():
         assert len(obs.advisory_text) > 20
         texts.append(obs.advisory_text)
     assert texts[0] == texts[1], "Advisory text must be deterministic"
+
+
+# ---------------------------------------------------------------------------
+# Regression / hardening tests (added post quality-audit)
+# ---------------------------------------------------------------------------
+
+def test_baseline_scores_stable():
+    """Greedy baseline scores must match documented values within tolerance.
+
+    If this test breaks, either the grading formula, reward shaping,
+    crop parameters, or greedy heuristic changed — update README/ARCHITECTURE.
+    """
+    expected = {1: 0.8689, 2: 0.8242, 3: 0.6776}
+    for task_id, expected_score in expected.items():
+        env = CropEnvironment()
+        obs = env.reset(seed=SEED, task_id=task_id)
+        fert_done: set = set()
+        while not obs.done:
+            obs = env.step(CropAction(**greedy_action(obs, fert_done)))
+        assert obs.reward == pytest.approx(expected_score, abs=0.001), (
+            f"Task {task_id}: expected {expected_score}, got {obs.reward}"
+        )
+
+
+def test_negative_amount_reports_conflict():
+    """Sending a negative amount must produce a conflict message."""
+    env = CropEnvironment()
+    obs = env.reset(seed=SEED, task_id=1)
+    obs = env.step(CropAction(action_type="irrigate", amount=-5.0))
+    assert any("Amount must be >= 0" in c for c in obs.conflicts)
+
+
+def test_yaml_malformed_raises_value_error(tmp_path):
+    """Loading malformed YAML must raise ValueError, not a raw yaml error."""
+    bad_yaml = tmp_path / "bad.yaml"
+    bad_yaml.write_text("!!invalid: [unclosed", encoding="utf-8")
+    from server.crop_params import load_profile_from_yaml
+    with pytest.raises(ValueError, match="Malformed YAML"):
+        load_profile_from_yaml(bad_yaml)
+
+
+def test_yaml_missing_keys_raises_value_error(tmp_path):
+    """YAML without 'crop' or 'soil' keys must raise a clear ValueError."""
+    incomplete = tmp_path / "incomplete.yaml"
+    incomplete.write_text("crop:\\n  tsum1: 1100\\n", encoding="utf-8")
+    from server.crop_params import load_profile_from_yaml
+    with pytest.raises(ValueError, match="Missing required key"):
+        load_profile_from_yaml(incomplete)

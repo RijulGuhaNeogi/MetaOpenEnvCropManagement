@@ -8,6 +8,9 @@ Crop and soil parameters are loaded from YAML config files under configs/.
 If a YAML file is missing, the hardcoded profiles in crop_params.py are
 used as a fallback.
 
+Seed derivation version: if the seed→weather formula ever changes,
+increment SEED_DERIVATION_VERSION so users know old results are incompatible.
+
 Simplification: we focus on wheat across 3 climatic profiles:
   - Netherlands (mild, reliable rainfall)
   - Punjab, India (hot, dry, needs irrigation)
@@ -31,6 +34,10 @@ from server.crop_params import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Increment this when the seed→weather derivation formula changes.
+# Old results are incompatible across different versions.
+SEED_DERIVATION_VERSION = 1
 
 
 def _load_params(crop_key: str, soil_key: str, yaml_file: str | None):

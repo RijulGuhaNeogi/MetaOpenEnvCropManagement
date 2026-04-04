@@ -299,15 +299,24 @@ def load_profile_from_yaml(
     ``crop:`` and ``soil:`` sections of the file.  Any field not specified
     in the YAML falls back to the dataclass default.
 
-    Raises ``FileNotFoundError`` if the path does not exist, ``KeyError``
-    if required top-level keys (``crop``, ``soil``) are missing.
+    Raises ``FileNotFoundError`` if the path does not exist,
+    ``ValueError`` if YAML is malformed or missing required keys.
     """
     path = pathlib.Path(yaml_path)
     if not path.is_absolute():
         path = _CONFIGS_DIR / path
 
-    with open(path, encoding="utf-8") as fh:
-        data = yaml.safe_load(fh)
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = yaml.safe_load(fh)
+    except yaml.YAMLError as exc:
+        raise ValueError(f"Malformed YAML in {path}: {exc}") from exc
+
+    if not isinstance(data, dict):
+        raise ValueError(f"Expected mapping at top level of {path}, got {type(data).__name__}")
+    for required in ("crop", "soil"):
+        if required not in data:
+            raise ValueError(f"Missing required key '{required}' in {path}")
 
     crop_dict = dict(data["crop"])
     soil_dict = dict(data["soil"])

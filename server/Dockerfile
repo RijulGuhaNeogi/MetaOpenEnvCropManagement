@@ -8,7 +8,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Run as non-root for security (OWASP container hardening)
-RUN adduser --disabled-password --no-create-home appuser
+RUN adduser --disabled-password --no-create-home appuser \
+ && chown -R appuser:appuser /app
 USER appuser
 
 EXPOSE 7860

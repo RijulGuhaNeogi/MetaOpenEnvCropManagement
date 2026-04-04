@@ -127,7 +127,12 @@ class CropEnvironment(
         self._state.step_count += 1
 
         action_type = action.action_type.lower().strip()
-        amount = max(0.0, action.amount)
+        amount = action.amount
+        if amount < 0:
+            conflicts.append(
+                f"Amount must be >= 0 (got {amount}). Clamping to 0."
+            )
+            amount = 0.0
 
         # Validate action type
         if action_type not in ("irrigate", "fertilize", "harvest", "wait"):
