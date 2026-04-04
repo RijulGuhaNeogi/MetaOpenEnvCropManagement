@@ -13,11 +13,28 @@ session across steps.
 Usage:
     uvicorn server.app:app --host 0.0.0.0 --port 8000
 """
+from typing import Any
+
 from openenv.core.env_server import create_app
+from pydantic import BaseModel
 
 from models import CropAction, CropObservation
 from server.environment import CropEnvironment
+from server.grader import grade_episode
 from server.tasks import TASKS
+
+
+class GradeRequest(BaseModel):
+    actual_yield: float
+    target_yield: float
+    total_water: float
+    total_n: float
+    total_cost: float
+    budget: float
+    harvest_dvs: float
+    harvested: bool
+    actions_taken: list[dict[str, Any]] = []
+    task_id: int = 1
 
 app = create_app(
     CropEnvironment,
@@ -25,6 +42,23 @@ app = create_app(
     CropObservation,
     env_name="crop_management",
 )
+
+
+@app.post("/grader")
+def grade(req: GradeRequest):
+    score, breakdown = grade_episode(
+        actual_yield=req.actual_yield,
+        target_yield=req.target_yield,
+        total_water=req.total_water,
+        total_n=req.total_n,
+        total_cost=req.total_cost,
+        budget=req.budget,
+        harvest_dvs=req.harvest_dvs,
+        harvested=req.harvested,
+        actions_taken=req.actions_taken,
+        task_id=req.task_id,
+    )
+    return {"score": score, "breakdown": breakdown}
 
 
 @app.get("/tasks")
@@ -84,7 +118,11 @@ def run_baseline():
     return _baseline_cache
 
 
-if __name__ == "__main__":
+def main():
     import uvicorn
 
     uvicorn.run("server.app:app", host="0.0.0.0", port=8000, reload=True)
+
+
+if __name__ == "__main__":
+    main()

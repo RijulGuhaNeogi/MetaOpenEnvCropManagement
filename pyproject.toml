@@ -21,6 +21,9 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest", "httpx"]
 
+[project.scripts]
+server = "server.app:main"
+
 # Setuptools: models.py, client.py are top-level modules
 # alongside the `server` and `agent` packages.
 [tool.setuptools.packages.find]

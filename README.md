@@ -70,7 +70,7 @@ The WOFOST-inspired crop growth simulator captures real agricultural dynamics: t
 - Punjab has minimal rainfall during the wheat season — irrigation is essential but expensive
 - Budget is tight ($300) — every irrigation/fertilization decision must be justified
 - Scoring weights yield (35%), water efficiency (20%), cost efficiency (18%), timing (15%), and harvest timing (12%) — no single strategy dominates
-- Target yield is the *universal* maximum potential production across all three locations — reaching it is mathematically impossible under budget constraints, and harder locations score lower by design
+- Target yield is the *universal* maximum potential production across all three locations — Task 3 creates genuine planning tension because the tight budget forces agents to prioritize which interventions matter most, and harder locations score lower by design
 
 ---
 
@@ -220,7 +220,7 @@ MetaHackathonPrep/
 │   └── wheat_punjab.yaml   # Punjab wheat WOFOST profile
 ├── server/
 │   ├── __init__.py         # Package marker
-│   ├── app.py              # FastAPI server via create_app() + /tasks endpoint
+│   ├── app.py              # FastAPI server via create_app() + /tasks, /grader, /baseline
 │   ├── advisory.py         # Deterministic advisory text generator
 │   ├── constants.py        # Shared numeric thresholds and weights
 │   ├── crop_params.py      # WOFOST crop/soil parameter library + YAML loader
@@ -230,15 +230,16 @@ MetaHackathonPrep/
 │   ├── reward.py           # Dense step + trajectory reward computation
 │   ├── rubric.py           # RFC 004 rubric (CropManagementRubric)
 │   ├── scenarios.py        # Seeded weather + scenario generator (3 locations)
-│   ├── tasks.py            # Task definitions (3 difficulty levels)
-│   └── Dockerfile          # Docker image for HuggingFace Spaces
+│   └── tasks.py            # Task definitions (3 difficulty levels)
 ├── tests/
 │   ├── test_smoke.py       # Smoke + RL + rubric tests
 │   ├── test_integration.py # HTTP endpoint integration tests
 │   └── test_ws_episode.py  # WebSocket full-episode tests
 ├── models.py               # CropAction, CropObservation, CropState
 ├── client.py               # WebSocket EnvClient subclass
+├── inference.py            # Competition inference script (root entrypoint)
 ├── openenv.yaml            # OpenEnv environment metadata
+├── Dockerfile              # Docker image for HuggingFace Spaces
 ├── pyproject.toml          # Package configuration
 ├── requirements.txt        # Python dependencies
 ├── .env                    # Local env vars (API keys — git-ignored)
@@ -310,13 +311,19 @@ HF_TOKEN=hf_your_token_here
 Then run:
 
 ```bash
-python -m agent.inference
+python inference.py
+```
+
+Run a single task:
+
+```bash
+TASK_ID=1 python inference.py
 ```
 
 Optional trajectory export:
 
 ```bash
-python -m agent.inference --trajectory-output trajectories/run.jsonl
+TRAJECTORY_OUTPUT=trajectories/run python inference.py
 ```
 
 This writes JSONL transitions with observation, action, reward, next observation, done flag, and metadata for offline RL or imitation-learning bootstrapping.
@@ -327,7 +334,7 @@ Or export the variables directly:
 export API_BASE_URL="https://router.huggingface.co/v1"
 export MODEL_NAME="meta-llama/Llama-3.1-8B-Instruct"
 export HF_TOKEN="hf_your_token_here"
-python -m agent.inference
+python inference.py
 ```
 
 > **Note:** If the LLM API returns 3+ consecutive errors (e.g. credit exhaustion), inference automatically falls back to the greedy heuristic for the rest of the episode and prints a warning at the end.
@@ -335,7 +342,7 @@ python -m agent.inference
 ### Without LLM (heuristic baseline)
 
 ```bash
-python -m agent.inference
+python inference.py
 ```
 
 Minimal client example against a running server:
@@ -352,7 +359,9 @@ python examples/client_greedy_run.py --base-url http://localhost:8000 --task-id 
 | `MODEL_NAME` | For LLM mode | Model identifier |
 | `HF_TOKEN` | For LLM mode | HuggingFace / API authentication token |
 | `ENV_URL` | No | Server URL (default: `http://localhost:8000`) |
-| `TRAJECTORY_OUTPUT` | No | Optional JSONL path for transition export |
+| `TASK_ID` | No | Run a single task by ID (default: all 3) |
+| `SEED` | No | Random seed for reproducibility (default: 42) |
+| `TRAJECTORY_OUTPUT` | No | Optional JSONL path prefix for transition export |
 
 All variables can be set in a `.env` file in the project root (auto-loaded via `python-dotenv`).
 
@@ -379,9 +388,9 @@ The deployed Space provides:
 ### Local Docker
 
 ```bash
-docker build -f server/Dockerfile -t crop-management .
+docker build -t crop-management .
 docker run -p 7860:7860 crop-management
-ENV_URL=http://localhost:7860 python -m agent.inference
+ENV_URL=http://localhost:7860 python inference.py
 ```
 
 ### Quick Baseline Check

@@ -34,6 +34,7 @@ api:
     - /state
     - /tasks
     - /baseline
+    - /grader
     - /docs
     - /ws
 
@@ -54,12 +55,14 @@ grading: normalized
 reproducible: true
 
 inference:
-  script: agent/inference.py
+  script: inference.py
   env_vars:
     - ENV_URL
     - API_BASE_URL
     - MODEL_NAME
     - HF_TOKEN
+    - TASK_ID
+    - SEED
     - TRAJECTORY_OUTPUT
 
 requirements:
