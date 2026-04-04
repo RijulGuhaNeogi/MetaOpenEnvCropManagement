@@ -16,10 +16,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import re
 import sys
 from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 from dotenv import load_dotenv
 
@@ -201,13 +204,13 @@ def call_llm(obs) -> dict:
             or "depleted your monthly included credits" in error_text
         )
         if llm_consecutive_errors >= LLM_ERROR_THRESHOLD:
-            print(
-                f"  [LLM disabled after {LLM_ERROR_THRESHOLD} consecutive errors — "
-                f"using greedy heuristic for remaining steps]",
-                file=sys.stderr,
+            log.warning(
+                "LLM disabled after %d consecutive errors — "
+                "using greedy heuristic for remaining steps",
+                LLM_ERROR_THRESHOLD,
             )
         else:
-            print(f"  [LLM error: {e!r} — falling back to greedy]", file=sys.stderr)
+            log.warning("LLM error: %r — falling back to greedy", e)
         return {}
 
     text = response.choices[0].message.content or "{}"
@@ -248,6 +251,7 @@ from server.constants import (
     FERT_WINDOW_2,
     HARVEST_DVS_LOW,
     SM_TARGET_HIGH,
+    SM_TARGET_LOW,
     SM_WATER_DEFICIT,
 )
 
@@ -255,7 +259,7 @@ SM_IRRIGATE_THRESHOLD = SM_WATER_DEFICIT  # Soil moisture below this = dry
 SM_CRITICAL_THRESHOLD = 0.18    # Soil moisture below this = critically dry
 RAIN_THRESHOLD_CM = 0.3         # Rain forecast above this = skip irrigation
 HARVEST_DVS = HARVEST_DVS_LOW   # Minimum DVS for harvest
-TARGET_SM = (SM_TARGET_HIGH + 0.28) / 2  # Soil moisture target for irrigation dosing
+TARGET_SM = (SM_TARGET_HIGH + SM_TARGET_LOW) / 2  # Soil moisture target for irrigation dosing
 MAX_IRRIGATION_CM = 5.0         # Do not irrigate more than this in one step
 FERT_STAGE1_DVS = (FERT_WINDOW_1[0] + 0.07, FERT_WINDOW_1[1])  # DVS range for first fertilization
 FERT_STAGE2_DVS = (FERT_WINDOW_2[0] + 0.07, FERT_WINDOW_2[1])  # DVS range for second fertilization
@@ -375,6 +379,10 @@ def _parse_args() -> argparse.Namespace:
 # ---------------------------------------------------------------------------
 
 def run():
+    logging.basicConfig(
+        level=getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO),
+        format="%(levelname)s %(name)s: %(message)s",
+    )
     args = _parse_args()
     trajectory_records: list[dict] = []
 
@@ -382,23 +390,23 @@ def run():
     with httpx.Client(base_url=ENV_URL, timeout=30.0) as http:
         health = http.get("/health")
         health.raise_for_status()
-        print(f"Connected to {ENV_URL}: {health.json()}")
+        log.info("Connected to %s: %s", ENV_URL, health.json())
 
         tasks_resp = http.get("/tasks")
         tasks_resp.raise_for_status()
         available_tasks = {t["id"]: t for t in tasks_resp.json()["tasks"]}  
-        print(f"Available tasks: {[t['name'] for t in available_tasks.values()]}")
+        log.info("Available tasks: %s", [t['name'] for t in available_tasks.values()])
 
 
     all_scores: dict[int, float] = {}
 
     for task_id in TASKS:
         if task_id not in available_tasks:
-            print(f"Task {task_id} not available, skipping")
+            log.info("Task %d not available, skipping", task_id)
             continue
 
         task = available_tasks[task_id]
-        print(f"\n--- Task {task_id}: {task['name']} ({task['difficulty']}) ---")
+        log.info("--- Task %d: %s (%s) ---", task_id, task['name'], task['difficulty'])
 
         sync_client = CropEnvClient(base_url=ENV_URL).sync()
         with sync_client:
@@ -447,19 +455,18 @@ def run():
                 act_str = f"{action.action_type}"
                 if action.amount > 0:
                     act_str += f"({action.amount:.1f})"
-                print(
-                    f"  Step {step_num}: {act_str} | "
-                    f"DVS={obs.crop_status.dvs:.3f} "
-                    f"SM={obs.soil_status.sm:.3f} "
-                    f"Yield={obs.crop_status.twso:.0f} | "
-                    f"reward={rew_str} done={result.done}"
+                log.info(
+                    "Step %d: %s | DVS=%.3f SM=%.3f Yield=%.0f | reward=%s done=%s",
+                    step_num, act_str,
+                    obs.crop_status.dvs, obs.soil_status.sm, obs.crop_status.twso,
+                    rew_str, result.done,
                 )
 
                 if result.reward is not None:
                     last_reward = result.reward
 
         all_scores[task_id] = last_reward
-        print(f"  Task {task_id} final score: {last_reward:.4f}")
+        log.info("Task %d final score: %.4f", task_id, last_reward)
 
     # Summary (=== RESULTS === format required by hackathon evaluation)
     print("\n=== RESULTS ===")
@@ -471,23 +478,25 @@ def run():
         print(f"Overall: {overall:.4f}")
     if args.trajectory_output:
         _write_trajectory_jsonl(args.trajectory_output, trajectory_records)
-        print(
-            f"Trajectory export: wrote {len(trajectory_records)} transitions to "
-            f"{args.trajectory_output}"
+        log.info(
+            "Trajectory export: wrote %d transitions to %s",
+            len(trajectory_records), args.trajectory_output,
         )
     if llm_calls or llm_fallbacks:
-        print(f"\nLLM stats: {llm_calls} calls, {llm_fallbacks} fallbacks")
+        log.info("LLM stats: %d calls, %d fallbacks", llm_calls, llm_fallbacks)
         if llm_consecutive_errors >= LLM_ERROR_THRESHOLD:
             if llm_credit_exhausted:
-                print(
-                    f"WARNING: LLM credits exhausted after {llm_calls} successful calls. "
-                    f"Switched to greedy heuristic for remaining steps. "
-                    f"Regenerate your HF token or wait for monthly credit reset."
+                log.warning(
+                    "LLM credits exhausted after %d successful calls. "
+                    "Switched to greedy heuristic for remaining steps. "
+                    "Regenerate your HF token or wait for monthly credit reset.",
+                    llm_calls,
                 )
             else:
-                print(
-                    f"WARNING: LLM disabled after repeated errors and switched to greedy "
-                    f"heuristic for remaining steps. Last error: {llm_last_error}"
+                log.warning(
+                    "LLM disabled after repeated errors and switched to greedy "
+                    "heuristic for remaining steps. Last error: %s",
+                    llm_last_error,
                 )
 
 

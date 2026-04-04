@@ -1,8 +1,8 @@
 openenv-core @ git+https://github.com/meta-pytorch/OpenEnv.git
-fastapi>=0.115
-pydantic>=2.7
-uvicorn>=0.30
-openai>=1.0
-httpx>=0.25
-python-dotenv>=1.0
-pyyaml>=6.0
+fastapi~=0.135.1
+pydantic~=2.12
+uvicorn~=0.41
+openai~=2.30
+httpx~=0.28
+python-dotenv~=1.2
+pyyaml~=6.0

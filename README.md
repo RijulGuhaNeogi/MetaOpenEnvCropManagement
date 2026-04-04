@@ -103,6 +103,7 @@ The WOFOST-inspired crop growth simulator captures real agricultural dynamics: t
 | `resources_used` | `ResourcesUsed` | Total water, nitrogen, cost, budget remaining, unit costs |
 | `season_summary` | dict | Crop name, location, target yield, budget, step size |
 | `control_features` | `ControlFeatures` | Derived RL-facing features (see below) |
+| `advisory_text` | str \| None | Deterministic factual summary of current crop state |
 | `conflicts` | list[str] | Feedback on invalid actions |
 
 All typed sub-models (`CropStatus`, `SoilStatus`, `ResourcesUsed`, `ControlFeatures`) are Pydantic models with explicit field types, providing IDE autocomplete and serialization safety.
@@ -187,12 +188,12 @@ The rubric is provided by `CropManagementRubric` (in `server/rubric.py`), a thin
 
 | Task | Score |
 |------|-------|
-| 1 (Easy) | 0.8442 |
-| 2 (Medium) | 0.8155 |
-| 3 (Hard) | 0.7026 |
-| **Overall** | **0.7881** |
+| 1 (Easy) | 0.8689 |
+| 2 (Medium) | 0.8242 |
+| 3 (Hard) | 0.6776 |
+| **Overall** | **0.7902** |
 
-These scores are produced by the current greedy heuristic, which now uses deficit-based irrigation and fertilizer timing/amounts aligned with the reward targets.
+These scores are produced by the current greedy heuristic, which uses deficit-based irrigation, WOFOST-calibrated fertilizer timing/amounts, and constants shared with the reward module.
 
 ---
 
@@ -208,15 +209,23 @@ MetaHackathonPrep/
 ├── docs/
 │   ├── ARCHITECTURE.md     # Comprehensive architecture document
 │   ├── hackathonBriefing.md# Bootcamp alignment & checklist
-│   └── FUTURE_SCOPE_PCSE.md# PCSE migration plan
+│   ├── FUTURE_SCOPE_PCSE.md# PCSE migration plan
+│   └── REFERENCES.md       # Scientific references (WOFOST, Boogaard et al.)
 ├── examples/
 │   ├── direct_benchmark.py # Minimal direct-environment benchmark example
 │   └── client_greedy_run.py# Minimal WebSocket client example
+├── configs/
+│   ├── wheat_nl.yaml       # Netherlands wheat WOFOST profile
+│   ├── wheat_iowa.yaml     # Iowa wheat WOFOST profile
+│   └── wheat_punjab.yaml   # Punjab wheat WOFOST profile
 ├── server/
 │   ├── __init__.py         # Package marker
 │   ├── app.py              # FastAPI server via create_app() + /tasks endpoint
-│   ├── environment.py      # CropEnvironment (reset/step/state)
+│   ├── advisory.py         # Deterministic advisory text generator
+│   ├── constants.py        # Shared numeric thresholds and weights
+│   ├── crop_params.py      # WOFOST crop/soil parameter library + YAML loader
 │   ├── crop_sim.py         # WOFOST-inspired crop growth simulator
+│   ├── environment.py      # CropEnvironment (reset/step/state)
 │   ├── grader.py           # Multi-metric deterministic scoring
 │   ├── reward.py           # Dense step + trajectory reward computation
 │   ├── rubric.py           # RFC 004 rubric (CropManagementRubric)
@@ -233,6 +242,7 @@ MetaHackathonPrep/
 ├── pyproject.toml          # Package configuration
 ├── requirements.txt        # Python dependencies
 ├── .env                    # Local env vars (API keys — git-ignored)
+├── .env.example            # Documented env var template
 ├── .gitignore              # Git ignore rules
 ├── .dockerignore           # Docker build exclusions
 └── README.md               # This file
@@ -437,7 +447,7 @@ Current test coverage includes:
 - passive-policy and extra-fertilizer regression checks
 - late-harvest boundary regression checks
 
-The full test suite has **48 passing tests** (38 smoke/rubric/weather + 7 HTTP integration + 3 real WebSocket transport).
+The full test suite has **51 passing tests** (41 smoke/rubric/weather + 7 HTTP integration + 3 real WebSocket transport).
 
 ## Limitations
 
@@ -489,6 +499,36 @@ Three climatic profiles with deterministic weather generation:
 - **Netherlands:** Mild maritime, reliable rainfall (easy)
 - **Iowa, USA:** Continental, moderate with dry spells (medium)
 - **Punjab, India:** Hot semi-arid, minimal winter rain (hard)
+
+### WOFOST Parameter Sources
+
+All crop and soil parameters are sourced from published WOFOST literature:
+
+- **Crop parameters:** Boogaard et al. (2014) *WOFOST Data Set*, de Wit et al. (2019) *25 Years of WOFOST*
+- **Soil parameters:** ISRIC World Soil Information, FAO soil classification
+- **Thermal sums:** van Diepen et al. (1989) original WOFOST specification
+- **Partitioning tables (FOTB):** de Wit et al. (2019), Table 4
+
+Parameters are stored in `server/crop_params.py` (frozen dataclasses with inline citation tags) and can be overridden via YAML configs in the `configs/` directory. See [docs/REFERENCES.md](docs/REFERENCES.md) for the full reference list.
+
+### YAML Configuration
+
+Crop and soil profiles can be customized via YAML files in `configs/`:
+
+```yaml
+# configs/wheat_nl.yaml
+crop:
+  tsum1: 1100
+  tsum2: 1000
+  lue: 2.8
+  # ... full WOFOST parameter set
+soil:
+  SMFCF: 0.36
+  SMW: 0.10
+  RDMSOL: 1200
+```
+
+The environment loads YAML configs first, falling back to hardcoded profiles if no matching YAML exists. To add a new crop profile, create a YAML file and reference it from `server/scenarios.py`.
 
 ---
 

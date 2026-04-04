@@ -41,3 +41,17 @@ WEIGHT_WATER = 0.20
 WEIGHT_COST = 0.18
 WEIGHT_TIMING = 0.15
 WEIGHT_HARVEST = 0.12
+
+# ---------------------------------------------------------------------------
+# Episode limits
+# Used by: server/environment.py
+# ---------------------------------------------------------------------------
+MAX_STEPS = 60                     # Safety cap on episode length (steps)
+
+# ---------------------------------------------------------------------------
+# Reward blend weights
+# Used by: server/environment.py
+# Validated against harvest_hesitation and drought_rescue probes.
+# ---------------------------------------------------------------------------
+REWARD_INTENT_WEIGHT = 0.4         # Weight for agronomic-intent reward
+REWARD_DELTA_WEIGHT = 0.6          # Weight for observed-state-change reward

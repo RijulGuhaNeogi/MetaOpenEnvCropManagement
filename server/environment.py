@@ -24,6 +24,7 @@ from openenv.core.env_server.interfaces import Environment
 from models import CropAction, CropObservation, CropState
 from models import ControlFeatures, CropStatus, ResourcesUsed, SoilStatus, WeatherDay
 from server.advisory import generate_advisory
+from server.constants import MAX_STEPS, REWARD_DELTA_WEIGHT, REWARD_INTENT_WEIGHT
 from server.crop_sim import CropSimulator
 from server.reward import (
     compute_delta_reward,
@@ -33,10 +34,6 @@ from server.reward import (
 from server.rubric import CropManagementRubric
 from server.scenarios import generate_probe_scenario, generate_scenario
 from server.tasks import TASKS, get_task_definition
-
-
-# Maximum number of agent steps before forced termination
-MAX_STEPS = 60
 
 
 class CropEnvironment(
@@ -270,9 +267,9 @@ class CropEnvironment(
             total_cost=self._state.total_cost,
             budget=self._state.budget,
         )
-        # Blend: 40% agronomic intent, 60% observed state change.
+        # Blend: agronomic intent + observed state change.
         # Validated against harvest_hesitation and drought_rescue probes.
-        step_reward = 0.4 * intent_reward + 0.6 * delta_reward
+        step_reward = REWARD_INTENT_WEIGHT * intent_reward + REWARD_DELTA_WEIGHT * delta_reward
         step_metadata = self._step_metadata(
             intent_reward=intent_reward,
             delta_reward=delta_reward,

@@ -5,6 +5,11 @@ endpoints: /health, /reset, /step, /state, /ws, /docs, /web.
 
 The custom /tasks endpoint lists available task definitions.
 
+Note: HTTP endpoints (/reset, /step) are stateless per-request — a new
+CropEnvironment instance is created for each request.  For multi-step
+episodes, use the WebSocket endpoint (/ws), which maintains a persistent
+session across steps.
+
 Usage:
     uvicorn server.app:app --host 0.0.0.0 --port 8000
 """

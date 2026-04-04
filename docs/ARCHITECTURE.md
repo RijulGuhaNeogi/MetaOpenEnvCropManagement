@@ -1,7 +1,7 @@
 # Architecture — Precision Agriculture Crop Management
 
-> **Last updated:** April 3, 2026
-> **Version:** 1.0 — initial architecture document
+> **Last updated:** June 2025
+> **Version:** 2.0 — Updated with WOFOST grounding, YAML configs, advisory text, constants extraction
 
 ---
 
@@ -110,10 +110,28 @@ Pure-Python WOFOST-inspired model (~250 LOC):
 
 **Key method:** `advance(days, irrigation_cm, n_kg_ha)` — advances the model by `days` time-steps, applying interventions.
 
-**Data libraries** (module-level dicts):
-- `CROP_LIBRARY` — wheat params: tsum1=1100, tsum2=1000, lue=2.5
-- `SOIL_LIBRARY` — clay_loam, sandy_loam, silt_loam
-- `PARTITION_TABLES` — DVS→grain_fraction tuples
+**Data libraries** (module-level dicts, sourced from `server/crop_params.py`):
+- `CROP_LIBRARY` — region-specific WOFOST wheat profiles (wheat_nl, wheat_iowa, wheat_punjab)
+- `SOIL_LIBRARY` — clay_loam, sandy_loam, silt_loam with published FAO/ISRIC parameters
+- `PARTITION_TABLES` — DVS→grain_fraction tuples auto-generated from FOTB
+
+### 3.4a Crop & Soil Parameters — `server/crop_params.py`
+
+Centralized WOFOST parameter library with frozen dataclasses:
+
+| Class | Key Fields | Source |
+|-------|-----------|--------|
+| `WOFOSTCropParams` | tsum1, tsum2, lue, tdwi, laiem, slatb, fotb, etc. | Boogaard et al. (2014), de Wit et al. (2019) |
+| `WOFOSTSoilParams` | SMFCF, SMW, RDMSOL, SM0, CRAIRC | ISRIC, FAO soil classification |
+
+3 wheat profiles: `WHEAT_NL`, `WHEAT_IOWA`, `WHEAT_PUNJAB` (region-calibrated).
+3 soil profiles: `SOIL_CLAY_LOAM`, `SOIL_SANDY_LOAM`, `SOIL_SILT_LOAM`.
+
+YAML override: `load_profile_from_yaml(path)` loads custom profiles from `configs/` directory, falling back to hardcoded defaults.
+
+### 3.4b Advisory Text — `server/advisory.py`
+
+Deterministic template-based advisory generator. `generate_advisory()` produces factual, neutral text describing current crop state, stress conditions, and resource usage — never prescribing actions. Included in `CropObservation.advisory_text`.
 
 ### 3.5 Scenario Generation — `server/scenarios.py`
 
@@ -305,8 +323,11 @@ MetaHackathonPrep/
 ├── server/                        # Server layer (OpenEnv environment + domain logic)
 │   ├── __init__.py                # Package marker
 │   ├── app.py                     # FastAPI entry point
-│   ├── environment.py             # CropEnvironment (OpenEnv interface)
+│   ├── advisory.py                # Deterministic advisory text generator
+│   ├── constants.py               # Shared numeric thresholds and weights
+│   ├── crop_params.py             # WOFOST crop/soil parameter library + YAML loader
 │   ├── crop_sim.py                # WOFOST-inspired crop simulator
+│   ├── environment.py             # CropEnvironment (OpenEnv interface)
 │   ├── scenarios.py               # Deterministic scenario/weather generation
 │   ├── tasks.py                   # Task definitions (3 difficulty levels)
 │   ├── grader.py                  # FROZEN — deterministic 5-metric scoring
@@ -323,7 +344,13 @@ MetaHackathonPrep/
 ├── docs/                          # Documentation
 │   ├── ARCHITECTURE.md            # This document
 │   ├── hackathonBriefing.md       # Bootcamp alignment & checklist
-│   └── FUTURE_SCOPE_PCSE.md       # PCSE migration plan
+│   ├── FUTURE_SCOPE_PCSE.md       # PCSE migration plan
+│   └── REFERENCES.md              # Scientific references (WOFOST, Boogaard et al.)
+│
+├── configs/                       # YAML crop/soil profiles (override hardcoded defaults)
+│   ├── wheat_nl.yaml
+│   ├── wheat_iowa.yaml
+│   └── wheat_punjab.yaml
 │
 ├── examples/                      # Runnable examples
 │   ├── direct_benchmark.py        # Fast local benchmark (no HTTP)
@@ -347,7 +374,9 @@ MetaHackathonPrep/
 | Data contracts | `models.py` | Data Models |
 | Network transport | `client.py`, `server/app.py` | Client / Server |
 | OpenEnv interface | `server/environment.py` | Server |
-| Crop physics | `server/crop_sim.py` | Simulation Domain |
+| Crop physics | `server/crop_sim.py`, `server/crop_params.py` | Simulation Domain |
+| Advisory text | `server/advisory.py` | Simulation Domain |
+| Shared constants | `server/constants.py` | Simulation Domain |
 | Weather & scenarios | `server/scenarios.py` | Simulation Domain |
 | Task configuration | `server/tasks.py` | Simulation Domain |
 | Episode scoring | `server/grader.py` | Simulation Domain |
@@ -407,14 +436,21 @@ models.py ← (no internal deps)
   │
   ├── server/app.py ← models, server/environment, server/tasks
   │
-  ├── server/environment.py ← models, server/crop_sim, server/rubric,
+│  ├── server/environment.py ← models, server/constants, server/crop_sim,
+  │                            server/advisory, server/rubric,
   │                            server/reward, server/scenarios, server/tasks
   │
   ├── server/rubric.py ← server/grader
   │
-  ├── server/crop_sim.py ← (no internal deps; standalone simulator)
+  ├── server/crop_sim.py ← server/crop_params (standalone simulator)
   │
-  ├── server/scenarios.py ← server/crop_sim
+  ├── server/crop_params.py ← (no internal deps; WOFOST parameter library)
+  │
+  ├── server/advisory.py ← (no internal deps; template generator)
+  │
+  ├── server/constants.py ← (no internal deps; shared thresholds)
+  │
+  ├── server/scenarios.py ← server/crop_sim, server/crop_params
   │
   ├── server/tasks.py ← (no internal deps)
   │
@@ -440,7 +476,7 @@ models.py ← (no internal deps)
 
 2. **`agent/inference.py` has multiple responsibilities** — LLM policy, greedy heuristic, trajectory export, and episode orchestration in one file. A future split into `llm_policy.py`, `greedy_policy.py`, `trajectory.py`, and `runner.py` would improve testability.
 
-3. **Configuration embedded in code** — crop/soil parameter libraries, task definitions, and weather parameters are hardcoded as module-level dicts. Extracting to YAML/JSON configuration files would improve extensibility.
+3. **Configuration partially externalized** — crop/soil parameters now live in `server/crop_params.py` (frozen dataclasses) with YAML overrides in `configs/`. Task definitions and weather parameters remain in code. Further extraction is possible but not currently needed.
 
 4. **`benchmark_sweep.py` crosses the layer boundary** — imports directly from `server/environment.py` for fast local evaluation. This is an intentional performance trade-off (no HTTP overhead) but breaks the clean Agent→Client→Server dependency chain.
 
@@ -452,10 +488,10 @@ models.py ← (no internal deps)
 
 | Task | Greedy Score (seed=42) |
 |------|----------------------|
-| 1 (Easy) | 0.8442 |
-| 2 (Medium) | 0.8155 |
-| 3 (Hard) | 0.7026 |
-| **Overall** | **0.7881** |
+| 1 (Easy) | 0.8689 |
+| 2 (Medium) | 0.8242 |
+| 3 (Hard) | 0.6776 |
+| **Overall** | **0.7902** |
 
 ---
 

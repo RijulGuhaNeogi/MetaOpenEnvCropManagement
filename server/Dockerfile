@@ -7,6 +7,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
+# Run as non-root for security (OWASP container hardening)
+RUN adduser --disabled-password --no-create-home appuser
+USER appuser
+
 EXPOSE 7860
 
 # Lightweight health check so orchestrators (Docker Compose, HF Spaces)
