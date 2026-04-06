@@ -14,8 +14,8 @@ FERT_WINDOW_1 = (0.20, 0.40)       # DVS range for first fertilization
 FERT_WINDOW_2 = (0.50, 0.70)       # DVS range for second fertilization
 FERT_TARGET_DVS_1 = 0.30           # Optimal DVS for first application
 FERT_TARGET_DVS_2 = 0.60           # Optimal DVS for second application
-FERT_TARGET_KG_1 = 18.0            # kg N/ha for first application
-FERT_TARGET_KG_2 = 15.0            # kg N/ha for second application
+FERT_MAX_KG_PER_STEP = 50.0         # Environment cap on kg N/ha per step
+DEFAULT_N_RECOV = 0.008             # Default N recovery factor (kg factor⁻¹)
 FERT_HEURISTIC_OFFSET = 0.07       # Greedy heuristic shifts window start to avoid
                                     # applying right at window boundary
 

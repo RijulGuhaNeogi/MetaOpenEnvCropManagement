@@ -210,18 +210,64 @@ Three policy paths:
 2. **LLM + fallback** — on LLM errors, falls back to oracle (auto-disables after 3 consecutive failures)
 3. **Oracle baseline only** — default when no LLM credentials
 
-**Oracle baseline** (`oracle_action()`):
-1. Tracks DVS via thermal-time accumulation (tier-independent)
+**Oracle baseline** (`oracle_action()`) — the theoretically optimal policy:
+
+The oracle has perfect knowledge of the crop model (WOFOST parameters, thermal
+time constants, N recovery rates) and computes the best possible action at
+every step, independent of observability tier.  It serves as the upper-bound
+reference trajectory.
+
+**Decision logic (priority order):**
+1. Tracks DVS via thermal-time accumulation from `weather_today` (tier-independent)
 2. Tracks N-factor via day-exact reconstruction from fertilization history
-3. Fertilize at optimal DVS within windows [0.20–0.40] and [0.50–0.70], choosing the step closest to target DVS (0.30 / 0.60)
-4. Computes exact N amount to fill n_factor to 1.0 (respects 50 kg/ha per-step cap)
-5. Harvest when DVS ≥ 1.90 (before shattering at 1.85)
-6. Irrigate when SM < 0.28 (or critical < 0.18)
-7. Wait otherwise
+3. **Harvest** when DVS ≥ 1.90 (inside optimal window 1.80–2.00, before shattering at 1.85)
+4. **Irrigate** when SM < 0.28 (or critical < 0.18) and no significant rain forecast
+5. **Fertilize** at optimal DVS within windows [0.20–0.40] and [0.50–0.70]:
+   - Waits for the step with DVS closest to target (0.30 / 0.60)
+   - Computes exact N amount to fill n_factor to 1.0 (respects 50 kg/ha per-step cap)
+6. **Wait** otherwise
 
-Includes trajectory export (JSONL) for offline RL.
+**Oracle reference in metadata:**
+At each non-terminal step, the environment calls `oracle_action()` and stores
+the result in `obs.metadata["oracle_action"]`.  This is **not visible** to the
+LLM (not included in `compress_observation`) — it exists for offline analysis
+and alignment measurement.
 
-### 3.11 Training Adapter — `agent/training_adapter.py`
+**Theoretical score ceilings:**
+The oracle achieves ~98% of the theoretical maximum.  Five hard constraints
+prevent reaching 1.0:
+
+| Constraint | Impact | Mitigable? |
+|------------|--------|------------|
+| Post-anthesis N depletion (5× faster after DVS 1.0) | −2–5% yield | No — both fert windows are pre-anthesis |
+| Grain shattering after DVS 1.85 | −1.25% yield at DVS 1.90 | Marginal — earlier harvest trades grain fill |
+| Water/cost efficiency gated by yield_score in grader | −2–3% | No — grader design choice |
+| 50 kg/ha per-step fertilizer cap | Split across 2 applications | No — hard environment cap |
+| Heat stress (Punjab: 35°C threshold) | Up to −70% reproductive growth | No — environmental |
+
+**Oracle scores (seed=42):**
+
+| Task | Score | Timing | Yield | Cost |
+|------|-------|--------|-------|------|
+| 1 (NL, tier 1) | 0.9418 | 0.975 | 0.951 | 0.847 |
+| 2 (Iowa, tier 2) | 0.9156 | 0.952 | 0.949 | 0.728 |
+| 3 (Punjab, tier 3) | 0.8241 | 0.903 | 0.900 | 0.511 |
+
+### 3.11 Step Reward Alignment with Oracle
+
+The dense reward system (`server/reward.py`) is designed so that the oracle's
+actions receive maximum reward:
+
+- **Fertilizer dose:** The reward computes the ideal dose dynamically from
+  `n_availability` and `N_RECOV` (how much N to fill n_factor to 1.0, capped
+  at 50 kg/ha) — matching the oracle's calculation exactly.
+- **Fertilizer timing:** Rewards peak at DVS 0.30 and 0.60 (the oracle's targets).
+- **Harvest:** +0.20 reward in the [1.80, 2.00] DVS window.
+- **Irrigation:** Rewards proportional to soil moisture deficit relief.
+- **Advisory text:** Provides contextual hints (fertilizer window status, soil
+  moisture vs optimal range, harvest readiness) without prescribing actions.
+
+### 3.12 Training Adapter — `agent/training_adapter.py`
 
 Discrete action vocabulary (8 buckets) for RL training:
 
@@ -232,9 +278,9 @@ Discrete action vocabulary (8 buckets) for RL training:
 | irrigate_small / medium / large | irrigate | 2 / 5 / 8 cm |
 | fertilize_small / medium / large | fertilize | 15 / 30 / 50 kg |
 
-### 3.12 Benchmark Sweep — `agent/benchmark_sweep.py`
+### 3.13 Benchmark Sweep — `agent/benchmark_sweep.py`
 
-Multi-seed evaluation utility that runs the greedy policy directly against `CropEnvironment` (no HTTP) for fast reproducible comparisons. Outputs per-task mean/std/min/max and verifies difficulty ordering.
+Multi-seed evaluation utility that runs the oracle policy directly against `CropEnvironment` (no HTTP) for fast reproducible comparisons. Outputs per-task mean/std/min/max and verifies difficulty ordering.
 
 ---
 

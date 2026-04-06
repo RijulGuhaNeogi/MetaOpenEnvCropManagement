@@ -18,10 +18,10 @@ Design principles (informed by OpenEnv bootcamp):
 from __future__ import annotations
 
 from server.constants import (
+    DEFAULT_N_RECOV,
+    FERT_MAX_KG_PER_STEP,
     FERT_TARGET_DVS_1,
     FERT_TARGET_DVS_2,
-    FERT_TARGET_KG_1,
-    FERT_TARGET_KG_2,
     FERT_WINDOW_1,
     FERT_WINDOW_2,
     HARVEST_DVS_HIGH,
@@ -36,11 +36,19 @@ def _clamp(value: float, lower: float, upper: float) -> float:
     return max(lower, min(upper, value))
 
 
-def _fertilizer_window_target(dvs: float) -> tuple[float | None, float | None, float]:
+def _ideal_n_dose(n_availability: float, n_recov: float) -> float:
+    """Compute the N kg/ha that would fill n_factor to 1.0, capped at 50 kg."""
+    deficit = max(0.0, 1.0 - n_availability)
+    return min(FERT_MAX_KG_PER_STEP, deficit / max(n_recov, 0.001))
+
+
+def _fertilizer_window_target(
+    dvs: float, n_availability: float, n_recov: float,
+) -> tuple[float | None, float | None, float]:
     if FERT_WINDOW_1[0] <= dvs <= FERT_WINDOW_1[1]:
-        return FERT_TARGET_KG_1, FERT_TARGET_DVS_1, 0.14
+        return _ideal_n_dose(n_availability, n_recov), FERT_TARGET_DVS_1, 0.14
     if FERT_WINDOW_2[0] <= dvs <= FERT_WINDOW_2[1]:
-        return FERT_TARGET_KG_2, FERT_TARGET_DVS_2, 0.12
+        return _ideal_n_dose(n_availability, n_recov), FERT_TARGET_DVS_2, 0.12
     return None, None, 0.0
 
 
@@ -59,6 +67,7 @@ def compute_step_reward(
     target_sm_high: float = SM_TARGET_HIGH,
     water_stress: float = 1.0,
     n_availability: float = 1.0,
+    n_recov: float = DEFAULT_N_RECOV,
 ) -> float:
     """Dense per-step reward based on agronomic correctness.
 
@@ -95,7 +104,9 @@ def compute_step_reward(
         return _clamp(reward, -0.12, 0.14)
 
     elif action_type == "fertilize":
-        target_amount, target_dvs, window_bonus = _fertilizer_window_target(dvs)
+        target_amount, target_dvs, window_bonus = _fertilizer_window_target(
+            dvs, n_availability, n_recov,
+        )
         projected_total_n = total_n + amount
 
         if target_amount is not None:
@@ -103,8 +114,8 @@ def compute_step_reward(
             timing_multiplier = 0.55 + 0.45 * timing_score
             dose_ratio = amount / max(target_amount, 1.0)
             fit_score = max(0.0, 1.0 - min(abs(dose_ratio - 1.0), 2.0) / 2.0)
-            season_excess = max(0.0, projected_total_n - 45.0)
-            excess_penalty = min(0.12, season_excess / 30.0 * 0.12)
+            season_excess = max(0.0, projected_total_n - 70.0)
+            excess_penalty = min(0.12, season_excess / 40.0 * 0.12)
             return _clamp(
                 0.03 + window_bonus * fit_score * timing_multiplier - excess_penalty,
                 -0.10,

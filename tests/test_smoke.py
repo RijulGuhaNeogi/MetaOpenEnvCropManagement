@@ -227,15 +227,18 @@ def test_irrigation_reward_prefers_moderate_dose():
 
 
 def test_fertilizer_reward_prefers_sensible_dose_in_window():
-    """A sensible fertilizer dose in the correct window should beat excess."""
+    """A dose matching plant N-deficit should beat an excessive dose."""
+    # n_availability=0.60 → deficit = 0.40 → ideal dose = 0.40/0.008 = 50 kg (capped)
+    # At n_availability=0.80 → ideal dose = (1.0-0.80)/0.008 = 25 kg
     sensible = compute_step_reward(
         action_type="fertilize",
         dvs=0.30,
         sm=0.30,
-        amount=18.0,
-        cost=27.0,
-        budget_remaining=100.0,
+        amount=25.0,
+        cost=37.5,
+        budget_remaining=200.0,
         total_n=10.0,
+        n_availability=0.80,
     )
     excessive = compute_step_reward(
         action_type="fertilize",
@@ -243,8 +246,9 @@ def test_fertilizer_reward_prefers_sensible_dose_in_window():
         sm=0.30,
         amount=50.0,
         cost=75.0,
-        budget_remaining=100.0,
+        budget_remaining=200.0,
         total_n=10.0,
+        n_availability=0.80,
     )
     assert sensible > excessive + 1e-9
 
@@ -351,6 +355,19 @@ def test_step_metadata_includes_reward_breakdown():
     assert "reward_breakdown" in obs.metadata
     assert "intent_reward" in obs.metadata["reward_breakdown"]
     assert "delta_reward" in obs.metadata["reward_breakdown"]
+
+
+def test_step_metadata_includes_oracle_action():
+    """Non-terminal steps should include oracle reference action in metadata."""
+    env = CropEnvironment()
+    env.reset(seed=SEED, task_id=1)
+
+    obs = env.step(CropAction(action_type="wait", amount=0.0))
+    assert "oracle_action" in obs.metadata
+    assert obs.metadata["oracle_action"]["action_type"] in (
+        "wait", "irrigate", "fertilize", "harvest",
+    )
+    assert isinstance(obs.metadata["oracle_action"]["amount"], float)
 
 
 def test_probe_scenario_can_be_loaded_internally():
@@ -820,6 +837,22 @@ def test_advisory_text_present_and_deterministic():
         assert len(obs.advisory_text) > 20
         texts.append(obs.advisory_text)
     assert texts[0] == texts[1], "Advisory text must be deterministic"
+
+
+def test_advisory_contains_fertilizer_window_hint():
+    """Advisory should mention fertilizer window when DVS is in range."""
+    env = CropEnvironment()
+    obs = env.reset(seed=SEED, task_id=1)
+    # Step until DVS enters first fert window (0.20-0.40)
+    for _ in range(10):
+        if obs.done:
+            break
+        if 0.20 <= obs.crop_status.dvs <= 0.40:
+            assert "fertilization window" in obs.advisory_text.lower()
+            return
+        obs = env.step(CropAction(action_type="wait", amount=0.0))
+    # If we never hit the window, skip (shouldn't happen with seed 42)
+    pytest.skip("Did not reach fertilizer window in 10 steps")
 
 
 # ---------------------------------------------------------------------------

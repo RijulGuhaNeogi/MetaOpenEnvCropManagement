@@ -114,9 +114,25 @@ def generate_advisory(
         else:
             alerts.append("Water stress detected — crop transpiration limited.")
 
+    # Soil moisture context: reference optimal range
+    if sm < 0.28 and forecast_rain_3d < 0.3:
+        parts.append("Moisture below optimal range (28-32%) with little rain forecast.")
+    elif sm > 0.36:
+        parts.append("Soil well above optimal moisture range — no irrigation needed.")
+
     # ── Nitrogen ──
     if n_availability < 0.45:
         alerts.append(f"Nitrogen availability low ({n_availability:.2f}).")
+
+    # ── Fertilizer window context ──
+    if 0.20 <= dvs <= 0.40:
+        parts.append("Crop is in the first fertilization window (DVS 0.20-0.40, target 0.30).")
+    elif 0.50 <= dvs <= 0.70:
+        parts.append("Crop is in the second fertilization window (DVS 0.50-0.70, target 0.60).")
+    elif 0.15 <= dvs < 0.20:
+        parts.append("First fertilization window approaching soon.")
+    elif 0.42 <= dvs < 0.50:
+        parts.append("Second fertilization window approaching soon.")
 
     # ── Weather ──
     weather_parts = []
@@ -147,9 +163,11 @@ def generate_advisory(
 
     # ── Maturity proximity ──
     if dvs >= 1.85:
-        alerts.append("Crop approaching full maturity — harvest window narrowing.")
+        alerts.append("Crop approaching full maturity — harvest window (DVS 1.80-2.00) is open and narrowing.")
+    elif dvs >= 1.80:
+        alerts.append("Crop has reached maturity — optimal harvest window (DVS 1.80-2.00) is open.")
     elif dvs >= 1.7:
-        alerts.append("Ripening phase — grain moisture declining.")
+        alerts.append("Ripening phase — approaching harvest window at DVS 1.80.")
 
     # ── Assemble ──
     text = " ".join(parts)

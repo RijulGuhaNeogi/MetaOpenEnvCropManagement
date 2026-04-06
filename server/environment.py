@@ -41,6 +41,17 @@ from server.rubric import CropManagementRubric
 from server.scenarios import generate_probe_scenario, generate_scenario
 from server.tasks import TASKS, get_task_definition
 
+# Lazy import to avoid circular dependency — oracle_action is a pure function
+# that reads an observation and returns an action dict.
+_oracle_action = None
+
+def _get_oracle_action():
+    global _oracle_action
+    if _oracle_action is None:
+        from agent.inference import oracle_action
+        _oracle_action = oracle_action
+    return _oracle_action
+
 
 class CropEnvironment(
     Environment[CropAction, CropObservation, CropState]
@@ -53,6 +64,7 @@ class CropEnvironment(
         self._scenario: dict[str, Any] = {}
         self._state = CropState()
         self._rubric = CropManagementRubric()
+        self._oracle_state: dict[str, Any] = {}
 
     # ------------------------------------------------------------------
     # OpenEnv interface
@@ -75,6 +87,7 @@ class CropEnvironment(
             else generate_scenario(actual_seed, task_id)
         )
         self._scenario = scenario
+        self._oracle_state = {}
 
         # Create simulator
         self._sim = CropSimulator(
@@ -279,6 +292,7 @@ class CropEnvironment(
             root_zone_depth_cm=scenario["soil_params"].rooting_depth_mm / 10.0,
             water_stress=self._sim._water_stress(),
             n_availability=self._sim.n_factor,
+            n_recov=scenario["crop_params"].N_RECOV,
         )
 
         pre_sm = self._sim.sm
@@ -367,6 +381,11 @@ class CropEnvironment(
                 inspect_performed=inspect_performed,
             )
 
+        # Compute oracle reference action (for metadata — not visible to LLM)
+        oracle_dict = self._compute_oracle_action(task)
+        if oracle_dict:
+            step_metadata["oracle_action"] = oracle_dict
+
         return self._build_observation(
             task,
             done=False,
@@ -379,6 +398,29 @@ class CropEnvironment(
     @property
     def state(self) -> CropState:
         return self._state.model_copy(deep=True)
+
+    # ------------------------------------------------------------------
+    # Oracle reference (for metadata — not shown to LLM)
+    # ------------------------------------------------------------------
+
+    def _compute_oracle_action(self, task: dict) -> dict[str, Any] | None:
+        """Call oracle_action on a tier-1 observation snapshot.
+
+        Returns the oracle's recommended action dict, or None on error.
+        The result is stored in obs.metadata for offline analysis; the
+        LLM never sees it in compress_observation.
+        """
+        try:
+            oracle_fn = _get_oracle_action()
+            # Build a minimal tier-1 observation for the oracle
+            tier1_obs = self._build_observation(task, done=False)
+            action_dict = oracle_fn(tier1_obs, self._oracle_state)
+            return {
+                "action_type": action_dict.get("action_type", "wait"),
+                "amount": round(action_dict.get("amount", 0.0), 1),
+            }
+        except Exception:
+            return None
 
     # ------------------------------------------------------------------
     # Helpers
