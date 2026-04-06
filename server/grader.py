@@ -99,6 +99,9 @@ def grade_episode(
             score = max(0.0, 1.0 - best_dist / 0.5)
             timing_scores.append(score)
         timing_quality = sum(timing_scores) / len(timing_scores)
+        # Penalize excess fertilization events (optimal is 2)
+        excess_ferts = max(0, len(fert_actions) - 2)
+        timing_quality *= max(0.4, 1.0 - 0.15 * excess_ferts)
     else:
         # No fertilization — zero credit (missed opportunity)
         timing_quality = 0.0

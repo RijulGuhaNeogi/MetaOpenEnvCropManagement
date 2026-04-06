@@ -68,6 +68,7 @@ def compute_step_reward(
     water_stress: float = 1.0,
     n_availability: float = 1.0,
     n_recov: float = DEFAULT_N_RECOV,
+    fert_events_count: int = 0,
 ) -> float:
     """Dense per-step reward based on agronomic correctness.
 
@@ -80,11 +81,12 @@ def compute_step_reward(
         stress_penalty = max(0.0, 1.0 - water_stress) * -0.04   # up to -0.04 at full stress
         n_penalty = max(0.0, 0.5 - n_availability) * -0.03      # up to -0.015 at n=0.0
         # Penalise waiting inside a fert window when crop still needs N
+        # BUT only when past the target DVS — waiting early is correct strategy
         fert_window_penalty = 0.0
-        if n_availability < 0.7 and (
-            (FERT_WINDOW_1[0] <= dvs <= FERT_WINDOW_1[1])
-            or (FERT_WINDOW_2[0] <= dvs <= FERT_WINDOW_2[1])
-        ):
+        in_w1 = FERT_WINDOW_1[0] <= dvs <= FERT_WINDOW_1[1]
+        in_w2 = FERT_WINDOW_2[0] <= dvs <= FERT_WINDOW_2[1]
+        past_target = (in_w1 and dvs >= FERT_TARGET_DVS_1) or (in_w2 and dvs >= FERT_TARGET_DVS_2)
+        if n_availability < 0.7 and past_target:
             fert_window_penalty = -0.015
         return _clamp(stress_penalty + n_penalty + fert_window_penalty, -0.06, 0.0)
 
@@ -125,6 +127,10 @@ def compute_step_reward(
         return _clamp(reward, -0.12, 0.14)
 
     elif action_type == "fertilize":
+        # Hard penalty for exceeding the 2-application cap
+        if fert_events_count > 2:
+            return _clamp(-0.06 - 0.001 * amount, -0.14, -0.04)
+
         target_amount, target_dvs, window_bonus = _fertilizer_window_target(
             dvs, n_availability, n_recov,
         )
@@ -132,16 +138,13 @@ def compute_step_reward(
 
         if target_amount is not None:
             timing_score = max(0.0, 1.0 - abs(dvs - (target_dvs or dvs)) / 0.10)
-            timing_multiplier = 0.55 + 0.45 * timing_score
+            timing_multiplier = 0.30 + 0.70 * timing_score
             dose_ratio = amount / max(target_amount, 1.0)
             fit_score = max(0.0, 1.0 - min(abs(dose_ratio - 1.0), 2.0) / 2.0)
-            season_excess = max(0.0, projected_total_n - 70.0)
-            excess_penalty = min(0.12, season_excess / 40.0 * 0.12)
-            return _clamp(
-                0.03 + window_bonus * fit_score * timing_multiplier - excess_penalty,
-                -0.10,
-                0.16,
-            )
+            season_excess = max(0.0, projected_total_n - 55.0)
+            excess_penalty = min(0.14, season_excess / 30.0 * 0.14)
+            reward = window_bonus * fit_score * timing_multiplier - excess_penalty
+            return _clamp(reward, -0.10, 0.16)
         elif dvs < 0.20:
             return -0.01  # Slightly wasteful: too early to matter much
         elif dvs > 1.5:
@@ -209,10 +212,10 @@ def compute_delta_reward(
     crop_vigor = max(0.3, min(1.0, season_progress)) if post_twso > 0 else 1.0
 
     spend_ratio = cost / max(budget_remaining, 1.0)
-    cost_penalty = min(0.03, spend_ratio * 0.03) * crop_vigor
+    cost_penalty = min(0.05, spend_ratio * 0.06) * crop_vigor
     spend_pressure = 0.0
     if budget > 0.0:
-        spend_pressure = min(0.06, max(0.0, total_cost) / budget * 0.06) * crop_vigor
+        spend_pressure = min(0.08, max(0.0, total_cost) / budget * 0.08) * crop_vigor
 
     if action_type == "irrigate":
         stress_gain = post_water_stress - pre_water_stress

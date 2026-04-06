@@ -295,6 +295,7 @@ class CropEnvironment(
             water_stress=self._sim._water_stress(),
             n_availability=self._sim.n_factor,
             n_recov=scenario["crop_params"].N_RECOV,
+            fert_events_count=self._state.fertilizer_events_count,
         )
 
         pre_sm = self._sim.sm

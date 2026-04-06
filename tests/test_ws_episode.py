@@ -77,7 +77,7 @@ def test_ws_full_episode_via_client(ws_base_url: str):
         oracle_state: dict = {}
         steps = 0
         while not result.done:
-            action_dict = oracle_action(obs, oracle_stattate)
+            action_dict = oracle_action(obs, oracle_state)
             result = sync_client.step(CropAction(**action_dict))
             obs = result.observation
             steps += 1
@@ -103,7 +103,7 @@ def test_ws_deterministic_across_runs(ws_base_url: str):
             obs = result.observation
             oracle_state: dict = {}
             while not result.done:
-                result = sync_client.step(CropAction(**oracle_action(obs, oracle_stattate)))
+                result = sync_client.step(CropAction(**oracle_action(obs, oracle_state)))
                 obs = result.observation
             results.append(obs.rubric_reward)
 
@@ -119,7 +119,7 @@ def test_ws_all_tasks_complete(ws_base_url: str):
             obs = result.observation
             oracle_state: dict = {}
             while not result.done:
-                result = sync_client.step(CropAction(**oracle_action(obs, oracle_stattate)))
+                result = sync_client.step(CropAction(**oracle_action(obs, oracle_state)))
                 obs = result.observation
 
             assert obs.rubric_reward is not None, f"Task {task_id}: no rubric_reward"

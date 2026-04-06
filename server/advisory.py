@@ -131,12 +131,29 @@ def generate_advisory(
             parts.append(f"Crop is in the first fertilization window (DVS 0.20-0.40, target 0.30, currently {dvs:.2f}).")
         else:
             parts.append("Crop is in the first fertilization window (DVS 0.20-0.40, target 0.30).")
-        if n_availability < 0.5:
-            parts.append("Nitrogen is deficient — a larger application (40-50 kg/ha) is recommended.")
-        elif n_availability < 0.8:
-            parts.append("Nitrogen is moderate — apply 35-50 kg/ha.")
+        # Timing guidance
+        if dvs < 0.25:
+            parts.append("Early in window — waiting closer to target DVS 0.30 improves timing score.")
+        elif dvs <= 0.35:
+            parts.append("Near optimal fertilization timing (target DVS 0.30).")
         else:
-            parts.append("Nitrogen is adequate — apply 20-35 kg/ha.")
+            parts.append("Late in window — fertilize soon before it closes.")
+        if tier == 1:
+            # T1: agent can see exact n_avail, give dose guidance
+            if n_availability < 0.5:
+                parts.append("Nitrogen is deficient — a larger application is recommended.")
+            elif n_availability < 0.8:
+                parts.append("Nitrogen is moderate — fertilization needed.")
+            else:
+                parts.append("Nitrogen is adequate — a small application may suffice.")
+        else:
+            # T2/T3: factual N status only, no dose numbers
+            if n_availability < 0.5:
+                parts.append("Nitrogen is deficient.")
+            elif n_availability < 0.8:
+                parts.append("Nitrogen is moderate.")
+            else:
+                parts.append("Nitrogen is adequate.")
         if tier >= 2 and fert_count == 0:
             parts.append("Consider inspect_soil ($10) to check exact nitrogen level.")
     elif 0.50 <= dvs <= 0.70:
@@ -144,12 +161,27 @@ def generate_advisory(
             parts.append(f"Crop is in the second fertilization window (DVS 0.50-0.70, target 0.60, currently {dvs:.2f}).")
         else:
             parts.append("Crop is in the second fertilization window (DVS 0.50-0.70, target 0.60).")
-        if n_availability < 0.5:
-            parts.append("Nitrogen is deficient — apply 40-50 kg/ha.")
-        elif n_availability < 0.8:
-            parts.append("Nitrogen is moderate — apply 35-50 kg/ha.")
+        # Timing guidance
+        if dvs < 0.55:
+            parts.append("Early in window — waiting closer to target DVS 0.60 improves timing score.")
+        elif dvs <= 0.65:
+            parts.append("Near optimal fertilization timing (target DVS 0.60).")
         else:
-            parts.append("Nitrogen is adequate — apply 15-25 kg/ha.")
+            parts.append("Late in window — fertilize soon before it closes.")
+        if tier == 1:
+            if n_availability < 0.5:
+                parts.append("Nitrogen is deficient — fertilization needed.")
+            elif n_availability < 0.8:
+                parts.append("Nitrogen is moderate — fertilization needed.")
+            else:
+                parts.append("Nitrogen is adequate — a small application may suffice.")
+        else:
+            if n_availability < 0.5:
+                parts.append("Nitrogen is deficient.")
+            elif n_availability < 0.8:
+                parts.append("Nitrogen is moderate.")
+            else:
+                parts.append("Nitrogen is adequate.")
     elif 0.15 <= dvs < 0.20:
         parts.append("First fertilization window approaching soon.")
     elif 0.42 <= dvs < 0.50:

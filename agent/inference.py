@@ -70,22 +70,29 @@ if MODEL_NAME and HF_TOKEN:
 SYSTEM_PROMPT = """\
 Wheat crop advisor. 1 step=1 week. Reply ONLY with JSON: {"action_type":"...","amount":...}
 
+RULE ZERO: If fert_count=2/2, NEVER fertilize again — skip to step 3.
+
 CHECK IN ORDER EACH STEP:
 
-1. HARVEST — DVS>=1.80 → harvest. If DVS hidden: inspect_crop ONCE at growth_stage="ripening", harvest only when DVS>=1.80 confirmed. Advisory says "harvest window open" → harvest. MUST harvest explicitly; auto-harvest@DVS2.0=20% credit.
+1. HARVEST — DVS>=1.80 → harvest. If DVS hidden: inspect_crop ONCE at growth_stage="ripening", harvest only when DVS>=1.80 confirmed or advisory says "harvest window". MUST harvest explicitly; auto-harvest@DVS2.0=20% credit.
 
-2. FERTILIZE — Only when in_fert_window=YES or advisory says "fertilization window". Max 2 total (stop at fert_count=2).
+2. FERTILIZE — ONLY when fert_count<2 AND in_fert_window is OPTIMAL or LATE.
+ If in_fert_window=EARLY → WAIT. The crop is in the window but not yet at target DVS. Waiting improves timing score.
+ If in_fert_window=OPTIMAL → fertilize NOW. Best timing.
+ If in_fert_window=LATE → fertilize NOW before window closes.
+ Strategy: you have exactly 2 fert slots across 2 windows. Apply a larger dose in window 1 (most vegetative growth ahead), a smaller top-up in window 2.
  Dose by nitrogen status:
-  Tier1: n_avail<0.6→50kg, 0.6-0.8→35kg, >0.8→20kg
-  Tier2/3: "deficient"→50kg, "moderate"→40kg, "adequate"→25kg, "surplus"→15kg
+  Tier1: n_avail>0.9→SKIP(wait), 0.8-0.9→10kg, 0.6-0.8→30kg, <0.6→40kg
+  Tier2/3: "surplus"→SKIP(wait), "adequate"→15kg, "moderate"→30kg, "deficient"→40kg
+ Yield is 35% of your score — prioritize crop nutrition. Stay within budget but don't under-fertilize.
 
-3. IRRIGATE — Tier1: moisture<0.28 & rain3d<0.3→irrigate. Tier2/3: moisture_band="low"/"critical" & no rain forecast. Dose: sm_gap_to_optimal×90, or 3cm if unknown.
+3. IRRIGATE — Tier1: moisture<0.28 & rain3d<0.3→irrigate. Tier2/3: moisture_band="low"/"critical" & no rain forecast. Dose: 3cm default, or sm_gap_to_optimal×90 if known.
 
-4. INSPECT (tier2/3 only) — inspect_crop($20) ONCE at "ripening" for DVS. inspect_soil($10) ONCE before 1st fert if N unclear. Skip if budget_remaining<$50 (except harvest timing).
+4. INSPECT (tier2/3 only) — inspect_soil($10): reveals EXACT nitrogen level for precise dose. Do ONCE before 1st fert window. inspect_crop($20): reveals EXACT DVS for precise harvest timing. Do ONCE at "ripening". Do NOT repeat. Skip if budget<$50.
 
-5. WAIT — if nothing above applies.
+5. WAIT — if nothing above applies. Waiting when crop is healthy is correct.
 
-Read advisory each step. Positive reward=good, negative=bad. Check budget_remaining before spending. JSON only."""
+Positive reward=good decision. Negative reward=wrong action, bad timing, or wasteful spend. JSON only."""
 
 
 def compress_observation(obs, prev_action: str | None = None, prev_reward: float | None = None) -> str:
@@ -100,7 +107,7 @@ def compress_observation(obs, prev_action: str | None = None, prev_reward: float
 
     lines = []
 
-    # Reward feedback from previous action — with brief diagnostic hint
+    # Reward feedback from previous action — with specific diagnostic
     if prev_action is not None and prev_reward is not None:
         sign = "+" if prev_reward >= 0 else ""
         if prev_reward > 0.10:
@@ -108,12 +115,12 @@ def compress_observation(obs, prev_action: str | None = None, prev_reward: float
         elif prev_reward > 0.02:
             hint = "mildly positive"
         elif prev_reward > -0.02:
-            hint = "neutral"
+            hint = "neutral — no harm, no benefit"
         elif prev_reward > -0.06:
-            hint = "mildly negative — consider adjusting"
+            hint = "negative — wasteful or mistimed action"
         else:
-            hint = "negative — wrong action or timing"
-        lines.append(f"Last action: {prev_action} → reward: {sign}{prev_reward:.2f} ({hint})")
+            hint = "strongly negative — wrong action, bad timing, or budget waste"
+        lines.append(f"Last action: {prev_action} → reward: {sign}{prev_reward:.3f} ({hint})")
 
     lines.extend([
         f"Task: {obs.task_name} (tier {tier}) | Day {obs.day}/{obs.day + obs.days_remaining}",
@@ -184,10 +191,31 @@ def compress_observation(obs, prev_action: str | None = None, prev_reward: float
             cf_parts.append(f"rain7d={cf.forecast_rain_7d}cm")
         cf_parts.append(f"budget_ratio={cf.budget_remaining_ratio}")
         cf_parts.append(f"root_depth={cf.rooting_depth_cm}cm")
-        # Convert fert window distance to clear YES/NO
+        # Convert fert window distance to EARLY/OPTIMAL/LATE signal
         fwd = cf.dvs_distance_to_next_fertilizer_window
         if fwd == 0.0:
-            cf_parts.append("in_fert_window=YES")
+            # Inside a fert window — determine position relative to target
+            dvs_val = cs.dvs if cs.dvs >= 0 else -1.0
+            if dvs_val >= 0:
+                if 0.20 <= dvs_val <= 0.40:
+                    if dvs_val < 0.25:
+                        cf_parts.append("in_fert_window=EARLY(target=0.30,wait_for_optimal)")
+                    elif dvs_val <= 0.35:
+                        cf_parts.append("in_fert_window=OPTIMAL(target=0.30)")
+                    else:
+                        cf_parts.append("in_fert_window=LATE(target=0.30,act_now)")
+                elif 0.50 <= dvs_val <= 0.70:
+                    if dvs_val < 0.55:
+                        cf_parts.append("in_fert_window=EARLY(target=0.60,wait_for_optimal)")
+                    elif dvs_val <= 0.65:
+                        cf_parts.append("in_fert_window=OPTIMAL(target=0.60)")
+                    else:
+                        cf_parts.append("in_fert_window=LATE(target=0.60,act_now)")
+                else:
+                    cf_parts.append("in_fert_window=YES")
+            else:
+                # DVS hidden (T2/T3) — fall back to YES
+                cf_parts.append("in_fert_window=YES")
         elif fwd > 0:
             cf_parts.append(f"in_fert_window=NO({fwd:.2f}_DVS_away)")
         if cf_parts:
