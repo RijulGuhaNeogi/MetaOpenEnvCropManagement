@@ -1,6 +1,6 @@
-"""Run a direct multi-seed greedy baseline sweep.
+"""Run a direct multi-seed oracle baseline sweep.
 
-This utility evaluates the current greedy policy directly against the
+This utility evaluates the current oracle policy directly against the
 CropEnvironment without going through the HTTP/WebSocket inference path.
 That makes it the fastest and cleanest way to measure policy stability
 across many deterministic seeds.
@@ -12,14 +12,14 @@ import json
 from pathlib import Path
 from statistics import mean, pstdev
 
-from agent.inference import greedy_action
+from agent.inference import oracle_action
 from models import CropAction
 from server.environment import CropEnvironment
 
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run a direct multi-seed greedy baseline sweep.",
+        description="Run a direct multi-seed oracle baseline sweep.",
     )
     parser.add_argument(
         "--start-seed",
@@ -56,11 +56,11 @@ def _parse_args() -> argparse.Namespace:
 def run_episode(task_id: int, seed: int) -> dict:
     env = CropEnvironment()
     obs = env.reset(seed=seed, task_id=task_id)
-    fert_done = set()
+    oracle_state = {}
     steps = 0
 
     while not obs.done:
-        action = CropAction(**greedy_action(obs, fert_done))
+        action = CropAction(**oracle_action(obs, oracle_state))
         obs = env.step(action)
         steps += 1
         if steps > 80:

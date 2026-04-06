@@ -30,7 +30,7 @@ from models import CropAction
 # Import reusable logic from the agent module (no duplication)
 from agent.inference import (
     call_llm,
-    greedy_action,
+    oracle_action,
     _record_transition,
     _write_trajectory_jsonl,
     llm_client,
@@ -89,7 +89,7 @@ def _format_action(action: CropAction) -> str:
 # ---------------------------------------------------------------------------
 def run_task(task_id: int, task_name: str) -> float:
     """Run a single task and return the rubric score."""
-    model_name = MODEL_NAME or "greedy-heuristic"
+    model_name = MODEL_NAME or "oracle-baseline"
     log_start(task=task_name, env=BENCHMARK, model=model_name)
 
     rewards: List[float] = []
@@ -103,21 +103,21 @@ def run_task(task_id: int, task_name: str) -> float:
         with sync_client:
             result = sync_client.reset(seed=SEED, task_id=task_id)
             obs = result.observation
-            fert_stages_done: set[str] = set()
+            oracle_state: dict = {}
 
             while not result.done and steps_taken < MAX_CLIENT_STEPS:
                 previous_obs = obs
 
-                # Choose action: LLM with greedy fallback
+                # Choose action: LLM with oracle fallback
                 if llm_client is not None:
                     action_dict = call_llm(obs)
                     policy_name = "llm"
                     if not action_dict or "action_type" not in action_dict:
-                        action_dict = greedy_action(obs, fert_stages_done)
-                        policy_name = "greedy_fallback"
+                        action_dict = oracle_action(obs, oracle_state)
+                        policy_name = "oracle_fallback"
                 else:
-                    action_dict = greedy_action(obs, fert_stages_done)
-                    policy_name = "greedy"
+                    action_dict = oracle_action(obs, oracle_state)
+                    policy_name = "oracle"
 
                 if "amount" not in action_dict:
                     action_dict["amount"] = 0.0

@@ -63,7 +63,7 @@ def test_docs_endpoint(client):
 # -----------------------------------------------------------------------
 
 def test_baseline_endpoint(client):
-    """GET /baseline should return deterministic greedy scores for all tasks."""
+    """GET /baseline should return deterministic oracle scores for all tasks."""
     response = client.get("/baseline")
     assert response.status_code == 200
     data = response.json()

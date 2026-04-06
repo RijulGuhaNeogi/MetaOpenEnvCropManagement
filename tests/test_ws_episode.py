@@ -13,7 +13,7 @@ import time
 import httpx
 import pytest
 
-from agent.inference import greedy_action
+from agent.inference import oracle_action
 from client import CropEnvClient
 from models import CropAction
 
@@ -68,16 +68,16 @@ def ws_base_url() -> str:
 
 
 def test_ws_full_episode_via_client(ws_base_url: str):
-    """Run a complete greedy episode over the real WebSocket transport."""
+    """Run a complete oracle episode over the real WebSocket transport."""
     sync_client = CropEnvClient(base_url=ws_base_url).sync()
     with sync_client:
         result = sync_client.reset(seed=SEED, task_id=1)
         obs = result.observation
 
-        fert_done: set[str] = set()
+        oracle_state: dict = {}
         steps = 0
         while not result.done:
-            action_dict = greedy_action(obs, fert_done)
+            action_dict = oracle_action(obs, oracle_stattate)
             result = sync_client.step(CropAction(**action_dict))
             obs = result.observation
             steps += 1
@@ -101,9 +101,9 @@ def test_ws_deterministic_across_runs(ws_base_url: str):
         with sync_client:
             result = sync_client.reset(seed=SEED, task_id=2)
             obs = result.observation
-            fert_done: set[str] = set()
+            oracle_state: dict = {}
             while not result.done:
-                result = sync_client.step(CropAction(**greedy_action(obs, fert_done)))
+                result = sync_client.step(CropAction(**oracle_action(obs, oracle_stattate)))
                 obs = result.observation
             results.append(obs.rubric_reward)
 
@@ -117,9 +117,9 @@ def test_ws_all_tasks_complete(ws_base_url: str):
         with sync_client:
             result = sync_client.reset(seed=SEED, task_id=task_id)
             obs = result.observation
-            fert_done: set[str] = set()
+            oracle_state: dict = {}
             while not result.done:
-                result = sync_client.step(CropAction(**greedy_action(obs, fert_done)))
+                result = sync_client.step(CropAction(**oracle_action(obs, oracle_stattate)))
                 obs = result.observation
 
             assert obs.rubric_reward is not None, f"Task {task_id}: no rubric_reward"

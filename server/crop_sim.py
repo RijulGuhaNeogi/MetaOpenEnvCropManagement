@@ -239,6 +239,13 @@ class CropSimulator:
         pf = self._partition_fraction()
         self.twso += actual_growth * pf
 
+        # ── Post-maturity grain shattering [Paulsen & Shroyer 2008] ──
+        # Kernels detach from the ear once DVS exceeds the shatter
+        # threshold.  Loss rate accelerates with further DVS advance.
+        if self.dvs > cp.SHATTER_DVS:
+            loss = cp.SHATTER_RATE * (self.dvs - cp.SHATTER_DVS)
+            self.twso *= (1.0 - loss)
+
         # ── LAI dynamics ──
         if self.dvs < cp.SENESCENCE_DVS:
             # Vegetative + early reproductive: new leaf growth
@@ -341,19 +348,26 @@ def compute_potential_yield(
     crop_name: str,
     weather_data: list[dict],
     max_days: int = 300,
+    soil: WOFOSTSoilParams | None = None,
 ) -> float:
-    """Run simulation with unlimited resources to find potential yield.
+    """Run simulation with unlimited resources to find peak potential yield.
 
-    Uses the named crop profile from CROP_LIBRARY and an "optimal" soil
-    with generous field capacity and deep rooting.
+    If *soil* is provided the simulation uses that soil profile (matching
+    the actual scenario conditions).  Otherwise falls back to a generic
+    "optimal" soil for backward-compatibility.
+
+    Returns the **peak** TWSO observed during the simulation, not the
+    value at DVS 2.0 — this accounts for post-maturity grain shattering.
     """
     crop = CROP_LIBRARY[crop_name]
-    soil = WOFOSTSoilParams(
-        name="optimal", SMFCF=0.40, SMW=0.15, SM_INIT=0.38, RDMSOL=90.0,
-    )
+    if soil is None:
+        soil = WOFOSTSoilParams(
+            name="optimal", SMFCF=0.40, SMW=0.15, SM_INIT=0.38, RDMSOL=90.0,
+        )
     sim = CropSimulator(crop, soil, weather_data, crop.FOTB)
     sim.n_factor = 1.0  # Perfect nitrogen
 
+    peak_twso = 0.0
     step = 7
     limit = min(max_days, len(weather_data) - step)
     while sim.dvs < 2.0 and sim.current_day < limit:
@@ -363,5 +377,7 @@ def compute_potential_yield(
         else:
             irrig = 0.0
         sim.advance(step, irrigation_cm=irrig, n_kg_ha=5.0)
+        if sim.twso > peak_twso:
+            peak_twso = sim.twso
 
-    return round(sim.twso, 1)
+    return round(peak_twso, 1)

@@ -83,6 +83,13 @@ class WOFOSTCropParams:
     N_FACTOR_FLOOR: float = 0.30       # — — minimum N availability factor
     N_FACTOR_INIT: float = 0.55        # — — initial N availability at sowing
 
+    # ── Grain shattering / spoilage ──
+    # Post-maturity grain loss: kernels detach from the ear and
+    # moisture + microbial activity reduce grain quality.
+    # [Paulsen & Shroyer 2008; Gan et al. 2018]
+    SHATTER_DVS: float = 1.85          # DVS at which grain shattering begins
+    SHATTER_RATE: float = 0.25         # d⁻¹ — daily TWSO loss fraction per DVS above threshold
+
     # ── Heat stress thresholds ──
     HEAT_FLOWER_THRESH: float = 35.0   # °C — pollen sterility threshold
                                         #   (Prasad et al. 2006; Porter & Gawith 1999)

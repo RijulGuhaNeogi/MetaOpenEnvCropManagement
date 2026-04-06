@@ -83,25 +83,25 @@ _baseline_cache: dict | None = None
 
 @app.get("/baseline")
 def run_baseline():
-    """Return deterministic greedy scores for all tasks (seed=42).
+    """Return deterministic oracle scores for all tasks (seed=42).
 
     Results are cached after first computation since they are fully
-    deterministic — same seed + same greedy policy = same scores.
+    deterministic — same seed + same oracle policy = same scores.
     """
     global _baseline_cache
     if _baseline_cache is not None:
         return _baseline_cache
 
-    from agent.inference import greedy_action as _greedy_action
+    from agent.inference import oracle_action as _oracle_action
 
     results = {}
     for task_id in sorted(TASKS.keys()):
         env = CropEnvironment()
         obs = env.reset(seed=42, task_id=task_id)
-        fert_done: set[str] = set()
+        oracle_state: dict = {}
         steps = 0
         while not obs.done:
-            action = CropAction(**_greedy_action(obs, fert_done))
+            action = CropAction(**_oracle_action(obs, oracle_state))
             obs = env.step(action)
             steps += 1
         results[task_id] = {

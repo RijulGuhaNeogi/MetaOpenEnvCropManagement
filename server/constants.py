@@ -33,7 +33,7 @@ SM_WATER_DEFICIT = 0.22            # Below this = water deficit flag
 # ---------------------------------------------------------------------------
 MAX_WATER_CM = 50.0                # Maximum reasonable irrigation for wheat season
 HARVEST_DVS_LOW = 1.80             # Start of optimal harvest window
-HARVEST_DVS_HIGH = 2.05            # End of optimal harvest window
+HARVEST_DVS_HIGH = 2.00            # End of optimal harvest window (= sim DVS cap)
 
 # ---------------------------------------------------------------------------
 # Grading weights (unified across all tasks)

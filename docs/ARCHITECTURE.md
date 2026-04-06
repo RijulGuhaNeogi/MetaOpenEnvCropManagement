@@ -207,14 +207,17 @@ Step reward blend: `0.4 × intent + 0.6 × delta`
 
 Three policy paths:
 1. **LLM-only** — if HF_TOKEN + API_BASE_URL + MODEL_NAME are set
-2. **LLM + fallback** — on LLM errors, falls back to greedy (auto-disables after 3 consecutive failures)
-3. **Greedy heuristic only** — default when no LLM credentials
+2. **LLM + fallback** — on LLM errors, falls back to oracle (auto-disables after 3 consecutive failures)
+3. **Oracle baseline only** — default when no LLM credentials
 
-**Greedy heuristic** (`greedy_action()`):
-1. Harvest when DVS ≥ 1.8
-2. Irrigate when SM < 0.22 AND no rain forecast (or SM < 0.18 critical)
-3. Fertilize at DVS [0.27–0.40] and [0.57–0.70] (once per stage)
-4. Wait otherwise
+**Oracle baseline** (`oracle_action()`):
+1. Tracks DVS via thermal-time accumulation (tier-independent)
+2. Tracks N-factor via day-exact reconstruction from fertilization history
+3. Fertilize at optimal DVS within windows [0.20–0.40] and [0.50–0.70], choosing the step closest to target DVS (0.30 / 0.60)
+4. Computes exact N amount to fill n_factor to 1.0 (respects 50 kg/ha per-step cap)
+5. Harvest when DVS ≥ 1.90 (before shattering at 1.85)
+6. Irrigate when SM < 0.28 (or critical < 0.18)
+7. Wait otherwise
 
 Includes trajectory export (JSONL) for offline RL.
 
@@ -463,7 +466,7 @@ models.py ← (no internal deps)
   ├── agent/training_adapter.py ← models
   │
   └── agent/benchmark_sweep.py ← models, server/environment,
-                                  agent/inference (greedy_action)
+                                  agent/inference (oracle_action)
 ```
 
 ---

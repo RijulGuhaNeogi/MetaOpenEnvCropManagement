@@ -232,12 +232,12 @@ PROBE_SCENARIOS = {
 def generate_scenario(seed: int, task_id: int) -> dict[str, Any]:
     """Generate a crop management scenario for the given task difficulty.
 
-    The target_yield is the MAXIMUM potential yield across all 3 locations
-    (computed with unlimited water and nitrogen on each location's weather).
-    Using a universal target ensures fair scoring: easy locations naturally
-    achieve a higher fraction of the target than hard locations, so
-    difficulty ordering (Easy > Medium > Hard) is guaranteed without
-    needing different grading weights.
+    The target_yield is the **peak potential yield for this task's own
+    location** — computed with unlimited water and nitrogen on the actual
+    soil.  Because each location's target reflects its own growing
+    conditions, a well-managed crop can approach yield_score ≈ 1.0 on
+    every task.  Difficulty comes from tighter budgets, less favourable
+    weather, and reduced observability — not from an unreachable target.
 
     Returns dict with keys: crop_name, crop_params, soil_params,
     partition_table, weather, location, max_duration, budget,
@@ -248,19 +248,17 @@ def generate_scenario(seed: int, task_id: int) -> dict[str, Any]:
 
     rng = random.Random(seed)
 
-    # Compute potential yield for ALL locations, use the max as universal target.
-    # This means yield_score = actual / best_possible_anywhere, ensuring:
-    #   - No task can exceed 1.0 (cap is never triggered)
-    #   - Easy locations score higher naturally (better growing conditions)
-    #   - Hard locations score lower naturally (worse conditions, not unfair target)
-    universal_target = _compute_universal_target(seed)
+    # Per-location target: peak yield achievable with perfect management
+    # on this location's actual soil and weather.
+    loc_key = {1: "netherlands", 2: "iowa", 3: "punjab"}[task_id]
+    location_target = _compute_location_target(seed, loc_key)
 
     if task_id == 1:
-        return _generate_easy(rng, seed, universal_target)
+        return _generate_easy(rng, seed, location_target)
     elif task_id == 2:
-        return _generate_medium(rng, seed, universal_target)
+        return _generate_medium(rng, seed, location_target)
     else:
-        return _generate_hard(rng, seed, universal_target)
+        return _generate_hard(rng, seed, location_target)
 
 
 def generate_probe_scenario(seed: int, probe_name: str) -> dict[str, Any]:
@@ -292,23 +290,27 @@ def generate_probe_scenario(seed: int, probe_name: str) -> dict[str, Any]:
     return scenario
 
 
-def _compute_universal_target(seed: int) -> float:
-    """Compute the max potential yield across all 3 locations for this seed."""
-    potentials = []
-    for loc_key, loc in LOCATIONS.items():
-        # Use the same seed derivation as each task's weather generator
-        if loc_key == "netherlands":
-            weather_seed = seed * 31 + 1
-        elif loc_key == "iowa":
-            weather_seed = seed * 37 + 2
-        else:  # punjab
-            weather_seed = seed * 41 + 3
-        weather = loc["weather_fn"](
-            random.Random(weather_seed), loc["max_duration"] + 30
-        )
-        pot = compute_potential_yield(loc["crop"], weather, loc["max_duration"])
-        potentials.append(pot)
-    return max(potentials)
+def _compute_location_target(seed: int, loc_key: str) -> float:
+    """Compute peak potential yield for a specific location and seed.
+
+    Uses the location's **actual** soil profile and weather so the target
+    is achievable with perfect management on that location.
+    """
+    loc = LOCATIONS[loc_key]
+    weather_seed = {
+        "netherlands": seed * 31 + 1,
+        "iowa": seed * 37 + 2,
+        "punjab": seed * 41 + 3,
+    }[loc_key]
+    crop_params, soil_params = _load_params(
+        loc["crop"], loc["soil"], loc.get("yaml")
+    )
+    weather = loc["weather_fn"](
+        random.Random(weather_seed), loc["max_duration"] + 30
+    )
+    return compute_potential_yield(
+        loc["crop"], weather, loc["max_duration"], soil=soil_params
+    )
 
 
 def _generate_easy(rng: random.Random, seed: int, target_yield: float) -> dict[str, Any]:
