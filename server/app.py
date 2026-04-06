@@ -35,6 +35,7 @@ class GradeRequest(BaseModel):
     harvested: bool
     actions_taken: list[dict[str, Any]] = []
     task_id: int = 1
+    explicit_harvest: bool = True
 
 app = create_app(
     CropEnvironment,
@@ -57,6 +58,7 @@ def grade(req: GradeRequest):
         harvested=req.harvested,
         actions_taken=req.actions_taken,
         task_id=req.task_id,
+        explicit_harvest=req.explicit_harvest,
     )
     return {"score": score, "breakdown": breakdown}
 

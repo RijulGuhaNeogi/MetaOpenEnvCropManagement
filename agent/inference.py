@@ -68,49 +68,72 @@ if MODEL_NAME and HF_TOKEN:
 
 
 SYSTEM_PROMPT = """\
-You are a precision agriculture advisor. You manage a wheat crop for one growing
-season. Each step is one week. You MUST return a JSON object with:
-  {"action_type": "...", "amount": ...}
+You are a precision agriculture advisor managing wheat for one season.
+Each step = one week. Return ONLY a JSON object: {"action_type": "...", "amount": ...}
 
-ACTIONS (6 available):
+DECISION PRIORITY (check in this order every step):
 
-1. HARVEST — if DVS >= 1.8 (or growth_stage is "ripening"/"mature"), ALWAYS harvest.
+1. HARVEST — Crop is ready ONLY when DVS >= 1.80.
+   • If you see exact DVS: harvest when DVS >= 1.80. If DVS is 1.79 or
+     below, WAIT — one more week will push it past 1.80.
+   • If DVS is hidden and growth_stage = "mature": harvest IMMEDIATELY.
+   • If DVS is hidden and growth_stage = "ripening": the crop is NOT
+     ready yet (ripening = DVS 1.50-1.99). If budget > $100, use
+     inspect_crop ONCE to check exact DVS. After inspecting, harvest if
+     DVS >= 1.80, otherwise wait. Never inspect twice in a row.
    → {"action_type": "harvest", "amount": 0}
 
-2. FERTILIZE — you MUST fertilize exactly twice per season:
-    • First application:  aim near DVS 0.30, not immediately at window start → 18 kg N/ha
-    • Second application: aim near DVS 0.60, not immediately at window start → 15 kg N/ha
-   Skipping fertilization severely hurts your score (15% of grade).
-    → {"action_type": "fertilize", "amount": 18}
+2. FERTILIZE — Apply exactly twice per season (15% of your score).
+   Read the Resources line for fert_count=X/2 (how many done so far).
+   Read the Control line for in_fert_window=YES or NO.
+   • If fert_count=0/2 AND in_fert_window=YES → apply 18 kg now.
+   • If fert_count=1/2 AND in_fert_window=YES → apply 15 kg now.
+   • If fert_count=2/2: both done, never fertilize again.
+   • If in_fert_window=NO: wait, do NOT fertilize yet.
+   • If in_fert_window is not shown (hidden tier): fertilize when
+     growth_stage is mid-"vegetative" for first, mid-"flowering" for second.
+   → {"action_type": "fertilize", "amount": 18}  (or 15 for second)
 
-3. IRRIGATE — if soil moisture < 0.22 (or sm_band="critical"/"low") AND no rain coming:
-    • Apply deficit-based irrigation toward 0.30, capped at 5.0 cm.
-    • If critically dry (sm < 0.18 or sm_band="critical"), irrigate regardless.
-    → {"action_type": "irrigate", "amount": 2.0}
+3. IRRIGATE — When soil is dry AND rain will not fix it:
+   a) Critical drought (moisture < 0.18 or sm_band="critical"): irrigate
+      immediately regardless of rain. Dose 3.0-4.0 cm.
+   b) Dry soil (moisture < 0.22 or sm_band="low"):
+      • With exact forecast (rain3d shown): irrigate if rain3d < 0.3 cm.
+      • With text forecast: irrigate unless text shows > 0.3 cm total
+        rain in next 3 days. "Light rain" does NOT block irrigation.
+      Dose: with exact moisture, use (0.30 − moisture) × root_depth,
+      capped at 5.0. With bands: critical→3.5, low→2.5 cm.
+   → {"action_type": "irrigate", "amount": 3.0}
 
-4. INSPECT_SOIL — costs $10 + 1 week. Reveals exact soil moisture, nitrogen, water stress.
-   Use when sm_band/n_visual are ambiguous and you need precision for a decision.
-    → {"action_type": "inspect_soil", "amount": 0}
+4. INSPECT (only when values are hidden on harder tasks):
+   • inspect_crop ($20): use ONCE during "ripening" to check harvest
+     readiness, or if unsure about fertilizer timing.
+   • inspect_soil ($10): use when sm_band="low" and weather is ambiguous.
+   Never inspect twice in a row — act on the result. Skip if budget < $100.
+   → {"action_type": "inspect_soil", "amount": 0}
+   → {"action_type": "inspect_crop", "amount": 0}
 
-5. INSPECT_CROP — costs $20 + 1 week. Reveals exact DVS, LAI, biomass, grain weight.
-   Use when you need precise growth stage to time fertilization or harvest.
-    → {"action_type": "inspect_crop", "amount": 0}
-
-6. WAIT — only if none of the above apply.
+5. WAIT — only if nothing above applies.
    → {"action_type": "wait", "amount": 0}
 
-NOTE: On harder tasks, some numeric readings are replaced by bands (e.g. "low",
-"adequate") and weather by NL summaries. Use inspect actions strategically if
-you need exact values — but each costs budget and a week of growing time.
+READING THE WEATHER FORECAST:
+• Exact forecast (tier 1): you see per-day numbers. Sum rain for 3 days.
+• Text forecast (tier 2): gives exact rain per day in text, e.g.
+  "Day 1: highs 18°C, lows 12°C, 0.2cm rain". Sum the rain values.
+• Bucketed forecast (tier 3): gives categories like "light rain",
+  "moderate rain", "heavy rain", "dry". Only "heavy rain" = significant.
 
-SCORING (same formula for all tasks):
-  0.35×yield + 0.20×water_eff + 0.18×cost_eff + 0.15×timing + 0.12×harvest
+STEP FEEDBACK: After each action, you see "Last action: X → reward: +Y.YY".
+Positive reward = good decision. Negative = bad. Near-zero = neutral.
+Wait can be slightly negative if the crop is stressed — act on it.
+Use this to calibrate — if fertilizing got negative reward, your timing was off.
 
+SCORING: 0.35×yield + 0.20×water_eff + 0.18×cost_eff + 0.15×timing + 0.12×harvest
 BUDGET: Always check budget_remaining before spending.
 Return ONLY valid JSON, no explanation."""
 
 
-def compress_observation(obs) -> str:
+def compress_observation(obs, prev_action: str | None = None, prev_reward: float | None = None) -> str:
     """Build a compact text representation of the observation for the LLM."""
     cs = obs.crop_status
     ss = obs.soil_status
@@ -120,10 +143,17 @@ def compress_observation(obs) -> str:
     cf = obs.control_features
     tier = getattr(obs, "observability_tier", 1)
 
-    lines = [
+    lines = []
+
+    # Reward feedback from previous action
+    if prev_action is not None and prev_reward is not None:
+        sign = "+" if prev_reward >= 0 else ""
+        lines.append(f"Last action: {prev_action} → reward: {sign}{prev_reward:.2f}")
+
+    lines.extend([
         f"Task: {obs.task_name} (tier {tier}) | Day {obs.day}/{obs.day + obs.days_remaining}",
         f"Crop: {sm.get('crop_name', 'wheat')} at {sm.get('location', '?')}",
-    ]
+    ])
 
     # Growth info — use bands when DVS hidden
     if cs.dvs >= 0:
@@ -169,9 +199,11 @@ def compress_observation(obs) -> str:
     elif weather_summary:
         lines.append(f"Weather forecast: {weather_summary}")
 
+    fert_count = cf.fertilizer_events_count if cf else 0
     lines.append(
         f"Resources: water={ru.total_water_cm:.1f}cm "
         f"N={ru.total_n_kg_ha:.1f}kg "
+        f"fert_count={fert_count}/2 "
         f"cost=${ru.total_cost:.1f} "
         f"remaining=${ru.budget_remaining:.1f}"
     )
@@ -180,15 +212,19 @@ def compress_observation(obs) -> str:
     if cf:
         cf_parts = []
         if cf.moisture_gap_to_target != 0.0 or tier == 1:
-            cf_parts.append(f"moist_gap={cf.moisture_gap_to_target}")
+            cf_parts.append(f"sm_gap_to_optimal={cf.moisture_gap_to_target}")
         if cf.forecast_rain_3d >= 0:
             cf_parts.append(f"rain3d={cf.forecast_rain_3d}cm")
         if cf.forecast_rain_7d >= 0:
             cf_parts.append(f"rain7d={cf.forecast_rain_7d}cm")
         cf_parts.append(f"budget_ratio={cf.budget_remaining_ratio}")
         cf_parts.append(f"root_depth={cf.rooting_depth_cm}cm")
-        if cf.dvs_distance_to_next_fertilizer_window >= 0:
-            cf_parts.append(f"next_fert_window={cf.dvs_distance_to_next_fertilizer_window}")
+        # Convert fert window distance to clear YES/NO
+        fwd = cf.dvs_distance_to_next_fertilizer_window
+        if fwd == 0.0:
+            cf_parts.append("in_fert_window=YES")
+        elif fwd > 0:
+            cf_parts.append(f"in_fert_window=NO({fwd:.2f}_DVS_away)")
         if cf_parts:
             lines.append("Control: " + " ".join(cf_parts))
 
@@ -211,7 +247,7 @@ def compress_observation(obs) -> str:
     return "\n".join(lines)
 
 
-def call_llm(obs) -> dict:
+def call_llm(obs, prev_action: str | None = None, prev_reward: float | None = None) -> dict:
     """Ask the LLM for a crop management action.
 
     Returns a dict with 'action_type' and optionally 'amount', or an
@@ -229,7 +265,7 @@ def call_llm(obs) -> dict:
     if llm_consecutive_errors >= LLM_ERROR_THRESHOLD:
         return {}
 
-    prompt = compress_observation(obs)
+    prompt = compress_observation(obs, prev_action=prev_action, prev_reward=prev_reward)
 
     try:
         response = llm_client.chat.completions.create(
@@ -482,13 +518,15 @@ def run():
             step_num = 0
             last_reward = 0.0
             fert_stages_done: set = set()
+            prev_action_str: str | None = None
+            prev_step_reward: float | None = None
 
             while not result.done and step_num < MAX_CLIENT_STEPS:
                 previous_obs = obs
 
                 # Choose action: try LLM first, fall back to heuristic
                 if llm_client is not None:
-                    action_dict = call_llm(obs)
+                    action_dict = call_llm(obs, prev_action=prev_action_str, prev_reward=prev_step_reward)
                     policy_name = "llm"
                     if not action_dict or "action_type" not in action_dict:
                         action_dict = greedy_action(obs, fert_stages_done)
@@ -527,6 +565,10 @@ def run():
                     obs.crop_status.dvs, obs.soil_status.sm, obs.crop_status.twso,
                     rew_str, result.done,
                 )
+
+                # Track previous action/reward for LLM feedback
+                prev_action_str = act_str
+                prev_step_reward = result.reward
 
                 if result.reward is not None:
                     last_reward = result.reward

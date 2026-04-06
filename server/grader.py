@@ -42,6 +42,7 @@ def grade_episode(
     harvested: bool,
     actions_taken: list[dict[str, Any]],
     task_id: int,
+    explicit_harvest: bool = True,
 ) -> tuple[float, dict[str, Any]]:
     """Compute final grade. Returns (score, breakdown_dict).
 
@@ -59,21 +60,25 @@ def grade_episode(
     # ---------------------------------------------------------------
     # Metric 2: Water efficiency (0-1)
     # Less water = better. Max reasonable water ~50cm for wheat season.
+    # Gated by yield_score to prevent zero-spend + poor yield from
+    # earning perfect efficiency.
     # ---------------------------------------------------------------
     max_water = MAX_WATER_CM  # cm — wasteful upper bound
     if total_water <= 0:
-        water_efficiency = 1.0  # No irrigation = best water efficiency
+        raw_water_efficiency = 1.0
     else:
-        water_efficiency = max(0.0, 1.0 - total_water / max_water)
+        raw_water_efficiency = max(0.0, 1.0 - total_water / max_water)
+    water_efficiency = raw_water_efficiency * max(yield_score, 0.1)
 
     # ---------------------------------------------------------------
     # Metric 3: Cost efficiency (0-1)
-    # Under-budget = good.
+    # Under-budget = good.  Gated by yield_score (same rationale).
     # ---------------------------------------------------------------
     if budget > 0:
-        cost_efficiency = max(0.0, 1.0 - total_cost / budget)
+        raw_cost_efficiency = max(0.0, 1.0 - total_cost / budget)
     else:
-        cost_efficiency = 1.0
+        raw_cost_efficiency = 1.0
+    cost_efficiency = raw_cost_efficiency * max(yield_score, 0.1)
 
     # ---------------------------------------------------------------
     # Metric 4: Timing quality (0-1)
@@ -95,15 +100,20 @@ def grade_episode(
             timing_scores.append(score)
         timing_quality = sum(timing_scores) / len(timing_scores)
     else:
-        # No fertilization — some penalty (missed opportunity)
-        timing_quality = 0.2
+        # No fertilization — zero credit (missed opportunity)
+        timing_quality = 0.0
 
     # ---------------------------------------------------------------
     # Metric 5: Harvest timing (0-1)
     # Optimal: DVS in [1.8, 2.05]
+    # Passive auto-harvest (DVS>=2.0, timeout, max-steps) gets minimal
+    # credit — only an explicit agent harvest action earns full marks.
     # ---------------------------------------------------------------
     if not harvested:
         harvest_timing = 0.0
+    elif not explicit_harvest:
+        # Auto-terminated: crop matured or season ended without agent harvesting
+        harvest_timing = 0.2
     elif HARVEST_DVS_LOW <= harvest_dvs <= HARVEST_DVS_HIGH:
         harvest_timing = 1.0
     elif 1.6 <= harvest_dvs < HARVEST_DVS_LOW:
@@ -148,6 +158,7 @@ def grade_episode(
         "budget": round(budget, 2),
         "harvest_dvs": round(harvest_dvs, 3),
         "harvested": harvested,
+        "explicit_harvest": explicit_harvest,
         "task_id": task_id,
     }
 

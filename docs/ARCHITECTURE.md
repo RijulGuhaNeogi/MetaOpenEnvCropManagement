@@ -488,10 +488,10 @@ models.py ← (no internal deps)
 
 | Task | Greedy Score (seed=42) |
 |------|----------------------|
-| 1 (Easy) | 0.8689 |
-| 2 (Medium) | 0.8242 |
-| 3 (Hard) | 0.6776 |
-| **Overall** | **0.7902** |
+| 1 (Easy) | 0.7464 |
+| 2 (Medium) | 0.5515 |
+| 3 (Hard) | 0.3143 |
+| **Overall** | **0.5374** |
 
 ---
 

@@ -199,12 +199,14 @@ The rubric is provided by `CropManagementRubric` (in `server/rubric.py`), a thin
 
 | Task | Score |
 |------|-------|
-| 1 (Easy) | 0.8689 |
-| 2 (Medium) | 0.7992 |
-| 3 (Hard) | 0.6522 |
-| **Overall** | **0.7734** |
+| 1 (Easy) | 0.7464 |
+| 2 (Medium) | 0.5515 |
+| 3 (Hard) | 0.3143 |
+| **Overall** | **0.5374** |
 
-These scores are produced by the greedy heuristic, which uses deficit-based irrigation, WOFOST-calibrated fertilizer timing/amounts, and constants shared with the reward module. On Tier 2/3, the greedy heuristic falls back to midpoint estimates from growth stage labels and soil moisture bands — intentionally imprecise, which degrades fertilizer timing and irrigation precision. An LLM agent that strategically uses inspect actions and reasons over NL observations can outperform the greedy baseline significantly on Tasks 2 and 3.
+These scores are produced by the greedy heuristic, which uses deficit-based irrigation, WOFOST-calibrated fertilizer timing/amounts, and constants shared with the reward module. On Tier 2/3, the greedy heuristic falls back to midpoint estimates from growth stage labels and soil moisture bands — intentionally imprecise, which degrades fertilizer timing and irrigation precision. On Tasks 2/3, the greedy cannot time harvest precisely (growth stage "ripening" maps to DVS 1.75, below the 1.8 threshold), so it relies on auto-termination at DVS 2.0, which the grader penalizes. An LLM agent that strategically uses inspect actions, reasons over NL observations, and explicitly harvests in the maturity window can outperform the greedy baseline significantly on Tasks 2 and 3.
+
+A **wait-only (do-nothing) policy** scores 0.37 / 0.35 / 0.17 on Tasks 1/2/3 respectively — the grader's anti-passivity calibration ensures that agents must take meaningful actions to score well.
 
 ---
 

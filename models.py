@@ -169,6 +169,7 @@ class CropState(State):
     actions_taken: list[dict[str, Any]] = Field(default_factory=list)
     harvested: bool = False
     harvest_dvs: float = 0.0           # DVS at time of harvest
+    explicit_harvest: bool = False      # True only when agent chose harvest action
     last_irrigation_day: Optional[int] = None
     last_fertilization_day: Optional[int] = None
     fertilizer_events_count: int = 0

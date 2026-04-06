@@ -409,8 +409,8 @@ def test_greedy_policy_consistently_beats_wait_only_policy():
         greedy_score, _ = _run_policy_episode(task_id, greedy_action)
         wait_score, breakdown = _run_policy_episode(task_id, _wait_only_policy)
 
-        assert breakdown["timing_quality"] == pytest.approx(0.2)
-        assert greedy_score > wait_score + 0.05
+        assert breakdown["timing_quality"] == pytest.approx(0.0)
+        assert greedy_score > wait_score + 0.10
 
 
 def test_skipping_fertilizer_remains_worse_than_greedy_policy():
@@ -419,10 +419,10 @@ def test_skipping_fertilizer_remains_worse_than_greedy_policy():
         greedy_score, greedy_breakdown = _run_policy_episode(task_id, greedy_action)
         no_fert_score, no_fert_breakdown = _run_policy_episode(task_id, _no_fertilizer_policy)
 
-        assert no_fert_breakdown["timing_quality"] == pytest.approx(0.2)
+        assert no_fert_breakdown["timing_quality"] == pytest.approx(0.0)
         assert no_fert_breakdown["total_n"] == pytest.approx(0.0)
         assert greedy_breakdown["timing_quality"] > no_fert_breakdown["timing_quality"]
-        assert greedy_score > no_fert_score + 0.05
+        assert greedy_score > no_fert_score + 0.10
 
 
 def test_extra_fertilizer_policy_does_not_beat_greedy_baseline():
@@ -563,7 +563,7 @@ def test_grader_unharvested_episode_zeros_yield_and_harvest():
 
 
 def test_grader_zero_water_gives_perfect_efficiency():
-    """No irrigation should yield water_efficiency = 1.0."""
+    """No irrigation should yield high water_efficiency, gated by yield_score."""
     _, breakdown = grade_episode(
         actual_yield=5000.0,
         target_yield=6500.0,
@@ -576,7 +576,9 @@ def test_grader_zero_water_gives_perfect_efficiency():
         actions_taken=[],
         task_id=1,
     )
-    assert breakdown["water_efficiency"] == pytest.approx(1.0)
+    # raw water_efficiency=1.0 but gated by yield_score (5000/6500)
+    yield_score = min(1.0, 5000.0 / 6500.0)
+    assert breakdown["water_efficiency"] == pytest.approx(1.0 * max(yield_score, 0.1), abs=0.001)
 
 
 def test_grader_excessive_water_floors_efficiency():
@@ -594,6 +596,56 @@ def test_grader_excessive_water_floors_efficiency():
         task_id=1,
     )
     assert breakdown["water_efficiency"] == pytest.approx(0.0)
+
+
+def test_passive_auto_harvest_penalized():
+    """Wait-only policy (auto-terminated) must score well below the greedy baseline."""
+    for task_id in (1, 2, 3):
+        wait_score, breakdown = _run_policy_episode(task_id, _wait_only_policy)
+        # Passive harvest gets minimal harvest_timing credit
+        assert breakdown["harvest_timing"] == pytest.approx(0.2)
+        # No fertilizer → zero timing_quality
+        assert breakdown["timing_quality"] == pytest.approx(0.0)
+        # Overall score must be low
+        assert wait_score < 0.40, (
+            f"Task {task_id}: wait-only score {wait_score} too high (expected < 0.40)"
+        )
+
+
+def test_explicit_harvest_retains_full_credit():
+    """An explicit harvest action in the maturity window must score harvest_timing=1.0."""
+    _, breakdown = grade_episode(
+        actual_yield=6000.0,
+        target_yield=6500.0,
+        total_water=15.0,
+        total_n=30.0,
+        total_cost=300.0,
+        budget=800.0,
+        harvest_dvs=1.95,
+        harvested=True,
+        actions_taken=[{"action_type": "harvest", "dvs": 1.95}],
+        task_id=1,
+        explicit_harvest=True,
+    )
+    assert breakdown["harvest_timing"] == pytest.approx(1.0)
+    assert breakdown["explicit_harvest"] is True
+
+    # Contrast: same scenario but passive harvest
+    _, passive_breakdown = grade_episode(
+        actual_yield=6000.0,
+        target_yield=6500.0,
+        total_water=15.0,
+        total_n=30.0,
+        total_cost=300.0,
+        budget=800.0,
+        harvest_dvs=1.95,
+        harvested=True,
+        actions_taken=[],
+        task_id=1,
+        explicit_harvest=False,
+    )
+    assert passive_breakdown["harvest_timing"] == pytest.approx(0.2)
+    assert passive_breakdown["explicit_harvest"] is False
 
 
 def test_terminal_harvest_uses_trajectory_not_dense_reward():
@@ -740,7 +792,7 @@ def test_baseline_scores_stable():
     If this test breaks, either the grading formula, reward shaping,
     crop parameters, or greedy heuristic changed — update README/ARCHITECTURE.
     """
-    expected = {1: 0.8689, 2: 0.7992, 3: 0.6522}
+    expected = {1: 0.7464, 2: 0.5515, 3: 0.3143}
     for task_id, expected_score in expected.items():
         env = CropEnvironment()
         obs = env.reset(seed=SEED, task_id=task_id)
@@ -917,4 +969,4 @@ def test_tier1_unchanged_after_upgrade():
     while not obs.done:
         obs = env.step(CropAction(**greedy_action(obs, fert_done)))
         steps += 1
-    assert obs.reward == pytest.approx(0.8689, abs=0.001)
+    assert obs.reward == pytest.approx(0.7464, abs=0.001)

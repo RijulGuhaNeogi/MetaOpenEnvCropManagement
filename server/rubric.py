@@ -34,6 +34,7 @@ class CropManagementRubric:
         harvested: bool,
         actions_taken: list[dict[str, Any]],
         task_id: int,
+        explicit_harvest: bool = True,
     ) -> tuple[float, dict[str, Any]]:
         """Score a completed episode.
 
@@ -51,4 +52,5 @@ class CropManagementRubric:
             harvested=harvested,
             actions_taken=actions_taken,
             task_id=task_id,
+            explicit_harvest=explicit_harvest,
         )

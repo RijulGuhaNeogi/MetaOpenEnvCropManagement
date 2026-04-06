@@ -106,6 +106,7 @@ class CropEnvironment(
             actions_taken=[],
             harvested=False,
             harvest_dvs=0.0,
+            explicit_harvest=False,
             last_irrigation_day=None,
             last_fertilization_day=None,
             fertilizer_events_count=0,
@@ -229,6 +230,7 @@ class CropEnvironment(
         if action_type == "harvest":
             self._state.harvested = True
             self._state.harvest_dvs = self._sim.dvs
+            self._state.explicit_harvest = True
             self._state.total_cost += cost
 
             # Compute final grade (step_reward is not used for terminal steps)
@@ -243,6 +245,7 @@ class CropEnvironment(
                 harvested=True,
                 actions_taken=self._state.actions_taken,
                 task_id=self._state.current_task_id,
+                explicit_harvest=True,
             )
             final_reward = compute_trajectory_reward(grade)
 
@@ -274,11 +277,14 @@ class CropEnvironment(
             total_water=self._sim.total_water,
             forecast_rain=forecast_rain_3d,
             root_zone_depth_cm=scenario["soil_params"].rooting_depth_mm / 10.0,
+            water_stress=self._sim._water_stress(),
+            n_availability=self._sim.n_factor,
         )
 
         pre_sm = self._sim.sm
         pre_water_stress = self._sim._water_stress()
         pre_n_availability = self._sim.n_factor
+        pre_twso = self._sim.twso
 
         # Advance simulation
         step_days = scenario["step_days"]
@@ -298,6 +304,9 @@ class CropEnvironment(
             budget_remaining=budget_remaining,
             total_cost=self._state.total_cost,
             budget=self._state.budget,
+            pre_twso=pre_twso,
+            post_twso=self._sim.twso,
+            target_yield=scenario["target_yield"],
         )
         # Blend: agronomic intent + observed state change.
         # Validated against harvest_hesitation and drought_rescue probes.
@@ -344,6 +353,7 @@ class CropEnvironment(
                 harvested=self._state.harvested,
                 actions_taken=self._state.actions_taken,
                 task_id=self._state.current_task_id,
+                explicit_harvest=self._state.explicit_harvest,
             )
             final_reward = compute_trajectory_reward(grade)
             return self._build_observation(

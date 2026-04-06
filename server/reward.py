@@ -6,11 +6,14 @@ on agronomic correctness.  The final episode score (from the grader) is
 returned separately as the trajectory reward.
 
 Design principles (informed by OpenEnv bootcamp):
-  - Rewards must not incentivize doing nothing (no free +reward for wait)
+  - Wait actions produce a state-quality delta signal so the agent
+    learns the cost of inaction when the crop is suffering.
   - Good actions: +0.10 to +0.20
   - Neutral / acceptable: 0.0
   - Bad actions: -0.03 to -0.30
   - Symmetric penalties for early AND late harvest
+  - Step rewards are gated by yield trajectory so they stay aligned
+    with the terminal grader (which gates efficiency by yield_score).
 """
 from __future__ import annotations
 
@@ -54,14 +57,20 @@ def compute_step_reward(
     root_zone_depth_cm: float = 90.0,
     target_sm_low: float = SM_TARGET_LOW,
     target_sm_high: float = SM_TARGET_HIGH,
+    water_stress: float = 1.0,
+    n_availability: float = 1.0,
 ) -> float:
     """Dense per-step reward based on agronomic correctness.
 
     Returns a reward in roughly [-0.3, +0.2] range.
     """
     if action_type == "wait":
-        # Neutral — never reward doing nothing, to prevent lazy-wait policies
-        return 0.0
+        # Penalise inaction when the crop is suffering — the agent should
+        # feel the cost of doing nothing while soil dries or N depletes.
+        # Small magnitude so it never dominates an actual action reward.
+        stress_penalty = max(0.0, 1.0 - water_stress) * -0.04   # up to -0.04 at full stress
+        n_penalty = max(0.0, 0.5 - n_availability) * -0.03      # up to -0.015 at n=0.0
+        return _clamp(stress_penalty + n_penalty, -0.06, 0.0)
 
     elif action_type == "irrigate":
         target_sm = (target_sm_low + target_sm_high) / 2.0
@@ -137,20 +146,41 @@ def compute_delta_reward(
     budget_remaining: float,
     total_cost: float = 0.0,
     budget: float = 0.0,
+    pre_twso: float = 0.0,
+    post_twso: float = 0.0,
+    target_yield: float = 1.0,
 ) -> float:
     """Reward the consequence of an action after the transition.
 
     Positive reward reflects relief of stress; penalties capture waste and
-    expensive low-impact actions. Returns a value in roughly [-0.15, +0.15].
+    expensive low-impact actions.  A yield-progress component ensures step
+    rewards stay aligned with the terminal grader's yield_score metric.
+
+    Returns a value in roughly [-0.15, +0.15].
     """
+    # Yield progress: mirrors grader's yield_score = actual/target.
+    yield_delta = (post_twso - pre_twso) / max(target_yield, 1.0)
+    yield_signal = _clamp(yield_delta * 0.5, -0.02, 0.04)
+
     if action_type in ("wait", "harvest"):
-        return 0.0
+        if action_type == "harvest":
+            return 0.0
+        # Wait: state deterioration/recovery + yield progress
+        stress_delta = post_water_stress - pre_water_stress
+        n_delta = post_n_availability - pre_n_availability
+        return _clamp(0.3 * stress_delta + 0.2 * n_delta + yield_signal, -0.08, 0.04)
+
+    # Crop vigor: mirrors grader's max(yield_score, 0.1) gating of efficiency.
+    # Early season (twso=0): vigor=1.0 (don't suppress). Late season with
+    # poor yield: vigor drops, reducing efficiency reward / amplifying penalty.
+    season_progress = min(1.0, post_twso / max(target_yield * 0.1, 1.0))
+    crop_vigor = max(0.3, min(1.0, season_progress)) if post_twso > 0 else 1.0
 
     spend_ratio = cost / max(budget_remaining, 1.0)
-    cost_penalty = min(0.03, spend_ratio * 0.03)
+    cost_penalty = min(0.03, spend_ratio * 0.03) * crop_vigor
     spend_pressure = 0.0
     if budget > 0.0:
-        spend_pressure = min(0.06, max(0.0, total_cost) / budget * 0.06)
+        spend_pressure = min(0.06, max(0.0, total_cost) / budget * 0.06) * crop_vigor
 
     if action_type == "irrigate":
         stress_gain = post_water_stress - pre_water_stress
@@ -162,13 +192,14 @@ def compute_delta_reward(
             - no_effect_penalty
             - cost_penalty
             - spend_pressure
+            + yield_signal
         )
         return _clamp(reward, -0.15, 0.15)
 
     if action_type == "fertilize":
         n_gain = post_n_availability - pre_n_availability
         inefficiency_penalty = 0.02 if n_gain < 0.01 else 0.0
-        reward = 0.6 * n_gain - inefficiency_penalty - cost_penalty - spend_pressure
+        reward = 0.6 * n_gain - inefficiency_penalty - cost_penalty - spend_pressure + yield_signal
         return _clamp(reward, -0.15, 0.15)
 
     return 0.0
