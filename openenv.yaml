@@ -1,10 +1,13 @@
 name: crop_management
 version: "0.1.0"
 description: >
-  Precision agriculture crop management environment. An LLM agent manages
-  a wheat growing season — deciding when to irrigate, fertilize, and harvest
-  to maximize yield while minimizing water use and cost. Uses a WOFOST-inspired
-  crop growth simulator with deterministic weather.
+  Precision agriculture crop management environment with partial observability.
+  An LLM agent manages a wheat growing season — deciding when to irrigate,
+  fertilize, harvest, inspect, or wait to maximize yield while minimizing water
+  use and cost. Tasks progress from full numeric observability (Tier 1) through
+  coarsened bands and NL weather (Tier 2) to bucketed weather with most sensors
+  hidden (Tier 3). Two inspect actions reveal exact sensor readings at a budget
+  and time cost. Uses a WOFOST-inspired crop growth simulator with deterministic weather.
 author: Team Hijibiji
 
 environment:
@@ -18,13 +21,16 @@ environment:
 tasks:
   - name: Basic Crop Growth
     difficulty: easy
-    objective: Manage wheat growth with generous budget — fertilize at right stages and harvest at maturity.
+    observability_tier: 1
+    objective: Manage wheat growth with generous budget and full sensor data — fertilize at right stages and harvest at maturity.
   - name: Water-Efficient Farming
     difficulty: medium
-    objective: Balance yield against water conservation and cost under variable weather.
+    observability_tier: 2
+    objective: Balance yield against water conservation with partial information — DVS and soil moisture hidden behind bands, weather as NL summary.
   - name: Precision Agriculture
     difficulty: hard
-    objective: Maximize yield while minimizing water and cost in a drought-prone region with tight budget.
+    observability_tier: 3
+    objective: Maximize yield under tight budget and information scarcity — most sensors hidden, bucketed weather, inspect actions reveal precision at a cost.
 
 api:
   endpoints:

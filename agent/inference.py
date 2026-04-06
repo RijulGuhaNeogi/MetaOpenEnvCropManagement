@@ -72,9 +72,9 @@ You are a precision agriculture advisor. You manage a wheat crop for one growing
 season. Each step is one week. You MUST return a JSON object with:
   {"action_type": "...", "amount": ...}
 
-ACTION PRIORITY (follow this order every step):
+ACTIONS (6 available):
 
-1. HARVEST — if DVS >= 1.8, ALWAYS harvest immediately.
+1. HARVEST — if DVS >= 1.8 (or growth_stage is "ripening"/"mature"), ALWAYS harvest.
    → {"action_type": "harvest", "amount": 0}
 
 2. FERTILIZE — you MUST fertilize exactly twice per season:
@@ -83,22 +83,30 @@ ACTION PRIORITY (follow this order every step):
    Skipping fertilization severely hurts your score (15% of grade).
     → {"action_type": "fertilize", "amount": 18}
 
-3. IRRIGATE — if soil moisture < 0.22 AND no rain > 0.3cm in forecast:
-    • Prefer deficit-based irrigation using rooting depth and moisture gap.
-    • Apply only enough water to move soil moisture toward 0.30, capped at 5.0 cm.
-    • If critically dry (sm < 0.18), irrigate even if rain is forecast.
-   Never irrigate if sm > 0.35.
+3. IRRIGATE — if soil moisture < 0.22 (or sm_band="critical"/"low") AND no rain coming:
+    • Apply deficit-based irrigation toward 0.30, capped at 5.0 cm.
+    • If critically dry (sm < 0.18 or sm_band="critical"), irrigate regardless.
     → {"action_type": "irrigate", "amount": 2.0}
 
-4. WAIT — only if none of the above apply.
+4. INSPECT_SOIL — costs $10 + 1 week. Reveals exact soil moisture, nitrogen, water stress.
+   Use when sm_band/n_visual are ambiguous and you need precision for a decision.
+    → {"action_type": "inspect_soil", "amount": 0}
+
+5. INSPECT_CROP — costs $20 + 1 week. Reveals exact DVS, LAI, biomass, grain weight.
+   Use when you need precise growth stage to time fertilization or harvest.
+    → {"action_type": "inspect_crop", "amount": 0}
+
+6. WAIT — only if none of the above apply.
    → {"action_type": "wait", "amount": 0}
+
+NOTE: On harder tasks, some numeric readings are replaced by bands (e.g. "low",
+"adequate") and weather by NL summaries. Use inspect actions strategically if
+you need exact values — but each costs budget and a week of growing time.
 
 SCORING (same formula for all tasks):
   0.35×yield + 0.20×water_eff + 0.18×cost_eff + 0.15×timing + 0.12×harvest
-  Timing = how close your fertilization is to DVS 0.3 and 0.6.
 
 BUDGET: Always check budget_remaining before spending.
-WATER: Over-irrigation harms both water efficiency and dense reward, so do not irrigate to field capacity unless the deficit requires it.
 Return ONLY valid JSON, no explanation."""
 
 
@@ -110,20 +118,46 @@ def compress_observation(obs) -> str:
     ru = obs.resources_used
     sm = obs.season_summary
     cf = obs.control_features
+    tier = getattr(obs, "observability_tier", 1)
 
     lines = [
-        f"Task: {obs.task_name} | Day {obs.day}/{obs.day + obs.days_remaining}",
+        f"Task: {obs.task_name} (tier {tier}) | Day {obs.day}/{obs.day + obs.days_remaining}",
         f"Crop: {sm.get('crop_name', 'wheat')} at {sm.get('location', '?')}",
-        f"Growth: DVS={cs.dvs:.3f} stage={cs.growth_stage} "
-        f"LAI={cs.lai:.2f} Yield={cs.twso:.0f} kg/ha",
-        f"Soil: moisture={ss.sm:.3f} deficit={ss.water_deficit} "
-        f"water_stress={ss.water_stress:.2f} n_avail={ss.n_availability:.2f}",
-        f"Weather today: tmax={wt.tmax}°C tmin={wt.tmin}°C "
-        f"rain={wt.rain} cm rad={wt.radiation} MJ/m2",
     ]
 
-    # Forecast
+    # Growth info — use bands when DVS hidden
+    if cs.dvs >= 0:
+        lines.append(
+            f"Growth: DVS={cs.dvs:.3f} stage={cs.growth_stage} "
+            f"LAI={cs.lai:.2f} Yield={cs.twso:.0f} kg/ha"
+        )
+    else:
+        lai_str = f"LAI={cs.lai:.2f}" if cs.lai >= 0 else f"lai_band={getattr(obs, 'lai_band', '?')}"
+        tagp_str = f"Biomass={cs.tagp:.0f}" if cs.tagp >= 0 else ""
+        twso_str = f"Yield={cs.twso:.0f} kg/ha" if cs.twso >= 0 else ""
+        extras = " ".join(filter(None, [lai_str, tagp_str, twso_str]))
+        lines.append(f"Growth: stage={cs.growth_stage} {extras}")
+
+    # Soil info — use bands when SM hidden
+    if ss.sm >= 0:
+        lines.append(
+            f"Soil: moisture={ss.sm:.3f} deficit={ss.water_deficit} "
+            f"water_stress={ss.water_stress:.2f} n_avail={ss.n_availability:.2f}"
+        )
+    else:
+        sm_band = getattr(obs, "sm_band", "?")
+        n_visual = getattr(obs, "n_visual", "?")
+        lines.append(f"Soil: moisture_band={sm_band} nitrogen={n_visual}")
+
+    # Weather today (always numeric)
+    lines.append(
+        f"Weather today: tmax={wt.tmax}°C tmin={wt.tmin}°C "
+        f"rain={wt.rain} cm rad={wt.radiation} MJ/m2"
+    )
+
+    # Forecast — numeric or NL summary depending on tier
     fc = obs.weather_forecast
+    weather_summary = getattr(obs, "weather_summary", None)
     if fc:
         fc_lines = []
         for f in fc[:4]:
@@ -132,6 +166,8 @@ def compress_observation(obs) -> str:
                 f"rain={f.rain}cm"
             )
         lines.append("Forecast:\n" + "\n".join(fc_lines))
+    elif weather_summary:
+        lines.append(f"Weather forecast: {weather_summary}")
 
     lines.append(
         f"Resources: water={ru.total_water_cm:.1f}cm "
@@ -139,20 +175,35 @@ def compress_observation(obs) -> str:
         f"cost=${ru.total_cost:.1f} "
         f"remaining=${ru.budget_remaining:.1f}"
     )
+
+    # Control features — only show non-sentinel values
     if cf:
-        lines.append(
-            "Control: "
-            f"moist_gap={cf.moisture_gap_to_target} "
-            f"rain3d={cf.forecast_rain_3d}cm "
-            f"rain7d={cf.forecast_rain_7d}cm "
-            f"budget_ratio={cf.budget_remaining_ratio} "
-            f"root_depth={cf.rooting_depth_cm}cm "
-            f"next_fert_window={cf.dvs_distance_to_next_fertilizer_window}"
-        )
+        cf_parts = []
+        if cf.moisture_gap_to_target != 0.0 or tier == 1:
+            cf_parts.append(f"moist_gap={cf.moisture_gap_to_target}")
+        if cf.forecast_rain_3d >= 0:
+            cf_parts.append(f"rain3d={cf.forecast_rain_3d}cm")
+        if cf.forecast_rain_7d >= 0:
+            cf_parts.append(f"rain7d={cf.forecast_rain_7d}cm")
+        cf_parts.append(f"budget_ratio={cf.budget_remaining_ratio}")
+        cf_parts.append(f"root_depth={cf.rooting_depth_cm}cm")
+        if cf.dvs_distance_to_next_fertilizer_window >= 0:
+            cf_parts.append(f"next_fert_window={cf.dvs_distance_to_next_fertilizer_window}")
+        if cf_parts:
+            lines.append("Control: " + " ".join(cf_parts))
+
     lines.append(f"Target yield: {sm.get('target_yield', 0):.0f} kg/ha")
 
     if obs.conflicts:
         lines.append(f"Conflicts: {'; '.join(obs.conflicts)}")
+
+    # Inspection reports
+    soil_report = getattr(obs, "soil_report", None)
+    crop_report = getattr(obs, "crop_report", None)
+    if soil_report:
+        lines.append(f"SOIL REPORT: {soil_report}")
+    if crop_report:
+        lines.append(f"CROP REPORT: {crop_report}")
 
     if getattr(obs, "advisory_text", None):
         lines.append(f"Advisory: {obs.advisory_text}")
@@ -250,7 +301,9 @@ from server.constants import (
     FERT_TARGET_KG_2,
     FERT_WINDOW_1,
     FERT_WINDOW_2,
+    GROWTH_STAGE_DVS_MAP,
     HARVEST_DVS_LOW,
+    SM_BAND_MIDPOINT,
     SM_TARGET_HIGH,
     SM_TARGET_LOW,
     SM_WATER_DEFICIT,
@@ -276,6 +329,10 @@ def greedy_action(obs, fert_stages_done: set) -> dict:
       2. Irrigate when soil is dry and no rain is forecast within 2 days
       3. Fertilize at key growth stages (once per stage)
       4. Otherwise wait (conservation — no free reward for waiting)
+
+    On tier 2/3, DVS and SM may be hidden (-1.0). The greedy heuristic falls
+    back to midpoint estimates from growth_stage and sm_band — intentionally
+    imprecise, which degrades fert window 2 timing and over-irrigates.
     """
     cs = obs.crop_status
     ss = obs.soil_status
@@ -283,14 +340,22 @@ def greedy_action(obs, fert_stages_done: set) -> dict:
     fc = obs.weather_forecast
     cf = obs.control_features
 
+    # Resolve DVS: use exact if available, else midpoint from growth stage
     dvs = cs.dvs
+    if dvs < 0:
+        dvs = GROWTH_STAGE_DVS_MAP.get(cs.growth_stage, 1.0)
+
+    # Resolve SM: use exact if available, else midpoint from sm_band
     sm = ss.sm
+    if sm < 0:
+        sm = SM_BAND_MIDPOINT.get(obs.sm_band or "adequate", 0.285)
+
     budget_remaining = ru.budget_remaining
     irrig_cost = ru.irrigation_cost_per_cm
     fert_cost = ru.fertilizer_cost_per_kg
     rooting_depth_cm = cf.rooting_depth_cm
 
-    # Check if rain is coming in next 2 days
+    # Check if rain is coming in next 2 days (unavailable on tier 2/3)
     rain_coming = False
     if fc:
         for f in fc[:2]:

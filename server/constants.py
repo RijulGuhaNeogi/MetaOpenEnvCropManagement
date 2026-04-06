@@ -58,3 +58,49 @@ MAX_STEPS = 60                     # Safety cap on episode length (steps)
 # ---------------------------------------------------------------------------
 REWARD_INTENT_WEIGHT = 0.4         # Weight for agronomic-intent reward
 REWARD_DELTA_WEIGHT = 0.6          # Weight for observed-state-change reward
+
+# ---------------------------------------------------------------------------
+# Inspection action costs
+# Used by: server/environment.py, agent/inference.py
+# ---------------------------------------------------------------------------
+INSPECT_SOIL_COST = 10             # Budget cost for inspect_soil action
+INSPECT_CROP_COST = 20             # Budget cost for inspect_crop action
+
+# ---------------------------------------------------------------------------
+# Observability band thresholds
+# Used by: server/environment.py (observation coarsening)
+# ---------------------------------------------------------------------------
+SM_BAND_CRITICAL = 0.18            # SM below this = "critical"
+SM_BAND_LOW = 0.22                 # SM below this = "low"
+SM_BAND_ADEQUATE = 0.35            # SM below this = "adequate", above = "high"
+
+N_VISUAL_DEFICIENT = 0.4           # n_factor below this = "deficient"
+N_VISUAL_ADEQUATE = 0.7            # n_factor below this = "adequate", above = "surplus"
+
+LAI_LOW = 1.5                      # LAI below this = "sparse"
+LAI_MODERATE = 3.5                 # LAI below this = "moderate", above = "dense"
+
+# ---------------------------------------------------------------------------
+# Growth stage DVS midpoint map (for greedy fallback on hidden-DVS tiers)
+# Labels match crop_sim.py growth_stage_name()
+# Used by: agent/inference.py
+# ---------------------------------------------------------------------------
+GROWTH_STAGE_DVS_MAP: dict[str, float] = {
+    "emergence": 0.075,
+    "vegetative": 0.325,
+    "flowering": 0.75,
+    "grain_fill": 1.25,
+    "ripening": 1.75,
+    "mature": 2.0,
+}
+
+# ---------------------------------------------------------------------------
+# SM band midpoint map (for greedy fallback on hidden-SM tiers)
+# Used by: agent/inference.py
+# ---------------------------------------------------------------------------
+SM_BAND_MIDPOINT: dict[str, float] = {
+    "critical": 0.15,
+    "low": 0.20,
+    "adequate": 0.285,
+    "high": 0.40,
+}

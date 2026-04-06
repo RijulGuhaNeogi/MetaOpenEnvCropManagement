@@ -78,6 +78,7 @@ def generate_advisory(
     budget_remaining: float,
     budget_total: float,
     location: str,
+    tier: int = 1,
 ) -> str:
     """Generate a neutral advisory paragraph from current field state.
 
@@ -94,15 +95,24 @@ def generate_advisory(
 
     # ── Growth stage ──
     stage = _growth_stage_label(dvs)
-    parts.append(f"{stage} (DVS {dvs:.2f}).")
+    if tier == 1:
+        parts.append(f"{stage} (DVS {dvs:.2f}).")
+    else:
+        parts.append(f"{stage}.")
 
     # ── Soil moisture ──
-    sm_pct = sm * 100
     moisture = _moisture_descriptor(sm, field_capacity, wilting_point)
-    parts.append(f"Soil moisture {moisture} at {sm_pct:.0f}%.")
+    if tier == 1:
+        sm_pct = sm * 100
+        parts.append(f"Soil moisture {moisture} at {sm_pct:.0f}%.")
+    else:
+        parts.append(f"Soil moisture {moisture}.")
 
     if water_stress < 0.7:
-        alerts.append(f"Water stress factor {water_stress:.2f} — crop transpiration limited.")
+        if tier == 1:
+            alerts.append(f"Water stress factor {water_stress:.2f} — crop transpiration limited.")
+        else:
+            alerts.append("Water stress detected — crop transpiration limited.")
 
     # ── Nitrogen ──
     if n_availability < 0.45:
@@ -148,3 +158,100 @@ def generate_advisory(
         text = f"{alert_str} {text}"
 
     return text
+
+
+# ── Weather NL ───────────────────────────────────────────────────────────
+
+def _temp_bucket(temp: float) -> str:
+    """Quantize temperature into 5°C bucket label."""
+    if temp < 5:
+        return "cold (below 5°C)"
+    elif temp < 10:
+        return "cool (5-10°C)"
+    elif temp < 15:
+        return "mild (10-15°C)"
+    elif temp < 20:
+        return "mild (15-20°C)"
+    elif temp < 25:
+        return "warm (20-25°C)"
+    elif temp < 30:
+        return "warm (25-30°C)"
+    elif temp < 35:
+        return "hot (30-35°C)"
+    else:
+        return "very hot (35°C+)"
+
+
+def _rain_bucket(rain_cm: float) -> str:
+    """Classify daily rain into bucket."""
+    if rain_cm <= 0:
+        return "no rain"
+    elif rain_cm < 0.3:
+        return "light rain"
+    elif rain_cm < 1.0:
+        return "moderate rain"
+    else:
+        return "heavy rain"
+
+
+def weather_to_nl(forecast_days: list, tier: int) -> str:
+    """Convert weather forecast list to deterministic NL string.
+
+    tier 2: exact per-day values.
+    tier 3: bucketed per-day values (5°C buckets, rain categories).
+    """
+    if not forecast_days:
+        return "No forecast available."
+
+    parts = []
+    for i, day in enumerate(forecast_days):
+        # Accept both WeatherDay objects and dicts
+        if hasattr(day, "tmax"):
+            tmax, tmin, rain = day.tmax, day.tmin, day.rain
+        else:
+            tmax, tmin, rain = day["tmax"], day["tmin"], day["rain"]
+
+        day_num = i + 1
+        if tier <= 2:
+            parts.append(f"Day {day_num}: highs {tmax:.0f}°C, lows {tmin:.0f}°C, {rain:.1f}cm rain")
+        else:
+            parts.append(f"Day {day_num}: {_temp_bucket(tmax)}, {_rain_bucket(rain)}")
+
+    return ". ".join(parts) + "."
+
+
+# ── Inspection reports ───────────────────────────────────────────────────
+
+def generate_soil_report(
+    *,
+    sm: float,
+    water_deficit: bool,
+    field_capacity: float,
+    wilting_point: float,
+    n_availability: float,
+    water_stress: float,
+) -> str:
+    """Exact soil measurements revealed by inspect_soil action."""
+    deficit_str = "significant water deficit" if water_deficit else "no water deficit"
+    return (
+        f"Soil analysis: moisture at {sm * 100:.1f}%, {deficit_str}. "
+        f"Field capacity {field_capacity * 100:.1f}%, wilting point {wilting_point * 100:.1f}%. "
+        f"Nitrogen uptake rate {n_availability:.2f}. "
+        f"Water stress factor {water_stress:.2f}."
+    )
+
+
+def generate_crop_report(
+    *,
+    dvs: float,
+    lai: float,
+    tagp: float,
+    twso: float,
+    growth_stage: str,
+) -> str:
+    """Exact crop measurements revealed by inspect_crop action."""
+    return (
+        f"Crop inspection: Development stage {dvs:.3f} ({growth_stage}). "
+        f"Leaf area index {lai:.2f}, total biomass {tagp:.1f} kg/ha, "
+        f"grain weight {twso:.1f} kg/ha."
+    )

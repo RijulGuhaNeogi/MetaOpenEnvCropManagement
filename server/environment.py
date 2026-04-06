@@ -23,8 +23,14 @@ from openenv.core.env_server.interfaces import Environment
 
 from models import CropAction, CropObservation, CropState
 from models import ControlFeatures, CropStatus, ResourcesUsed, SoilStatus, WeatherDay
-from server.advisory import generate_advisory
-from server.constants import MAX_STEPS, REWARD_DELTA_WEIGHT, REWARD_INTENT_WEIGHT
+from server.advisory import generate_advisory, generate_soil_report, generate_crop_report, weather_to_nl
+from server.constants import (
+    MAX_STEPS, REWARD_DELTA_WEIGHT, REWARD_INTENT_WEIGHT,
+    INSPECT_SOIL_COST, INSPECT_CROP_COST,
+    SM_BAND_CRITICAL, SM_BAND_LOW, SM_BAND_ADEQUATE,
+    N_VISUAL_DEFICIENT, N_VISUAL_ADEQUATE,
+    LAI_LOW, LAI_MODERATE,
+)
 from server.crop_sim import CropSimulator
 from server.reward import (
     compute_delta_reward,
@@ -135,20 +141,39 @@ class CropEnvironment(
             amount = 0.0
 
         # Validate action type
-        if action_type not in ("irrigate", "fertilize", "harvest", "wait"):
+        valid_actions = ("irrigate", "fertilize", "harvest", "wait", "inspect_soil", "inspect_crop")
+        if action_type not in valid_actions:
             conflicts.append(
                 f"Invalid action_type: '{action.action_type}'. "
-                "Must be one of: irrigate, fertilize, harvest, wait."
+                f"Must be one of: {', '.join(valid_actions)}."
             )
             action_type = "wait"
             amount = 0.0
+
+        # Handle inspect actions — budget check + cost, then fall through as wait
+        inspect_performed: str | None = None
+        if action_type in ("inspect_soil", "inspect_crop"):
+            inspect_cost = INSPECT_SOIL_COST if action_type == "inspect_soil" else INSPECT_CROP_COST
+            amount = 0.0
+            budget_remaining_now = self._state.budget - self._state.total_cost
+            if inspect_cost > budget_remaining_now:
+                conflicts.append(
+                    f"Cannot afford {action_type} (${inspect_cost}) with "
+                    f"${budget_remaining_now:.1f} remaining. Treating as wait."
+                )
+                action_type = "wait"
+            else:
+                inspect_performed = action_type
+                action_type = "wait"  # Sim advances like a wait
 
         # Compute cost
         cost = 0.0
         irrig_cm = 0.0
         n_kg = 0.0
 
-        if action_type == "irrigate":
+        if inspect_performed:
+            cost = float(INSPECT_SOIL_COST if inspect_performed == "inspect_soil" else INSPECT_CROP_COST)
+        elif action_type == "irrigate":
             amount = min(amount, 10.0)  # Cap at 10 cm per step
             if amount <= 0:
                 conflicts.append("Irrigation amount must be > 0. Treating as wait.")
@@ -182,6 +207,7 @@ class CropEnvironment(
             n_kg = 0.0
 
         # Record action
+        record_action_type = inspect_performed if inspect_performed else action_type
         current_day = self._sim.current_day
         if action_type == "irrigate" and irrig_cm > 0.0:
             self._state.last_irrigation_day = current_day
@@ -191,7 +217,7 @@ class CropEnvironment(
 
         action_record = {
             "step": self._state.step_count,
-            "action_type": action_type,
+            "action_type": record_action_type,
             "amount": amount,
             "dvs": round(self._sim.dvs, 3),
             "sm": round(self._sim.sm, 3),
@@ -229,6 +255,7 @@ class CropEnvironment(
                     **self._step_metadata(),
                     "rubric_breakdown": breakdown,
                 },
+                inspect_performed=inspect_performed,
             )
 
         # Compute intent reward before advancing
@@ -327,6 +354,7 @@ class CropEnvironment(
                     **step_metadata,
                     "rubric_breakdown": breakdown,
                 },
+                inspect_performed=inspect_performed,
             )
 
         return self._build_observation(
@@ -335,6 +363,7 @@ class CropEnvironment(
             reward=step_reward,
             conflicts=conflicts,
             metadata=step_metadata,
+            inspect_performed=inspect_performed,
         )
 
     @property
@@ -414,6 +443,7 @@ class CropEnvironment(
         rubric_reward: float | None = None,
         conflicts: list[str] | None = None,
         metadata: dict[str, Any] | None = None,
+        inspect_performed: str | None = None,
     ) -> CropObservation:
         sim = self._sim
         scenario = self._scenario
@@ -470,7 +500,7 @@ class CropEnvironment(
             2,
         )
 
-        return CropObservation(
+        obs = CropObservation(
             done=done,
             reward=reward,
             rubric_reward=rubric_reward,
@@ -558,3 +588,115 @@ class CropEnvironment(
                 location=scenario["location"],
             ),
         )
+
+        # ---------------------------------------------------------------
+        # Partial observability coarsening (Phase E)
+        # ---------------------------------------------------------------
+        tier = task.get("observability_tier", 1)
+        hidden_fields = set(task.get("hidden_fields", []))
+        obs.observability_tier = tier
+
+        if tier >= 2:
+            # --- Compute bands from exact values (before hiding) ---
+            exact_sm = sim.sm
+            exact_n = sim.n_factor
+            exact_lai = sim.lai
+
+            if exact_sm < SM_BAND_CRITICAL:
+                obs.sm_band = "critical"
+            elif exact_sm < SM_BAND_LOW:
+                obs.sm_band = "low"
+            elif exact_sm < SM_BAND_ADEQUATE:
+                obs.sm_band = "adequate"
+            else:
+                obs.sm_band = "high"
+
+            if exact_n < N_VISUAL_DEFICIENT:
+                obs.n_visual = "deficient"
+            elif exact_n < N_VISUAL_ADEQUATE:
+                obs.n_visual = "adequate"
+            else:
+                obs.n_visual = "surplus"
+
+            if exact_lai < LAI_LOW:
+                obs.lai_band = "sparse"
+            elif exact_lai < LAI_MODERATE:
+                obs.lai_band = "moderate"
+            else:
+                obs.lai_band = "dense"
+
+            # --- Hide numeric fields ---
+            if "dvs" in hidden_fields:
+                obs.crop_status.dvs = -1.0
+                obs.dvs_hidden = True
+            if "sm" in hidden_fields:
+                obs.soil_status.sm = -1.0
+                obs.sm_hidden = True
+            if "n_availability" in hidden_fields:
+                obs.soil_status.n_availability = -1.0
+            if "water_stress" in hidden_fields:
+                obs.soil_status.water_stress = -1.0
+
+            # --- Sentinel leaking control features ---
+            obs.control_features.moisture_gap_to_target = 0.0
+            obs.control_features.forecast_rain_3d = -1.0
+            obs.control_features.forecast_rain_7d = -1.0
+            obs.control_features.dvs_distance_to_next_fertilizer_window = -1.0
+            obs.control_features.estimated_budget_to_finish = -1.0
+
+            # --- Replace weather forecast with NL summary ---
+            obs.weather_summary = weather_to_nl(weather_forecast, tier)
+            obs.weather_forecast = []
+
+            # --- Tier-aware advisory (no exact numbers) ---
+            obs.advisory_text = generate_advisory(
+                day=sim.current_day,
+                days_remaining=max(0, scenario["max_duration"] - sim.current_day),
+                step_days=scenario["step_days"],
+                dvs=sim.dvs,
+                lai=sim.lai,
+                sm=sim.sm,
+                field_capacity=scenario["soil_params"].field_capacity,
+                wilting_point=scenario["soil_params"].wilting_point,
+                water_stress=sim._water_stress(),
+                n_availability=sim.n_factor,
+                weather_today_tmax=weather_today["tmax"],
+                forecast_rain_3d=forecast_rain_3d,
+                forecast_rain_7d=forecast_rain_7d,
+                total_water_cm=sim.total_water,
+                total_n_kg_ha=sim.total_n,
+                budget_remaining=budget_remaining,
+                budget_total=scenario["budget"],
+                location=scenario["location"],
+                tier=tier,
+            )
+
+        if tier >= 3:
+            # --- Additionally hide crop growth internals ---
+            if "lai" in hidden_fields:
+                obs.crop_status.lai = -1.0
+            if "tagp" in hidden_fields:
+                obs.crop_status.tagp = -1.0
+            if "twso" in hidden_fields:
+                obs.crop_status.twso = -1.0
+
+        # --- Inspection reports (reveal exact values) ---
+        if inspect_performed == "inspect_soil":
+            obs.soil_report = generate_soil_report(
+                sm=sim.sm,
+                water_deficit=sim.sm < 0.22,
+                field_capacity=scenario["soil_params"].field_capacity,
+                wilting_point=scenario["soil_params"].wilting_point,
+                n_availability=sim.n_factor,
+                water_stress=sim._water_stress(),
+            )
+        elif inspect_performed == "inspect_crop":
+            obs.crop_report = generate_crop_report(
+                dvs=sim.dvs,
+                lai=sim.lai,
+                tagp=sim.tagp,
+                twso=sim.twso,
+                growth_stage=sim.growth_stage_name(),
+            )
+
+        return obs

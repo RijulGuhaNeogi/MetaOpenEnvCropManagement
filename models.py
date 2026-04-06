@@ -24,7 +24,8 @@ from openenv.core.env_server.types import Action, Observation, State
 class CropAction(Action):
     """Weekly management decision sent by the agent.
 
-    action_type: one of 'irrigate', 'fertilize', 'harvest', 'wait'
+    action_type: one of 'irrigate', 'fertilize', 'harvest', 'wait',
+                 'inspect_soil', 'inspect_crop'
     amount:      cm of water (irrigate) or kg N/ha (fertilize); 0 for others
     """
     action_type: str = "wait"
@@ -121,6 +122,17 @@ class CropObservation(Observation):
     conflicts: list[str] = Field(default_factory=list)
     advisory_text: Optional[str] = None
     rubric_reward: float | None = None
+
+    # --- Observability tier fields (partial observability upgrade) ---
+    observability_tier: int = 1       # 1=full numeric, 2=mixed, 3=NL-heavy
+    dvs_hidden: bool = False          # True when exact DVS is masked (-1.0)
+    sm_hidden: bool = False           # True when exact SM is masked (-1.0)
+    sm_band: Optional[str] = None     # "critical"/"low"/"adequate"/"high"
+    n_visual: Optional[str] = None    # "deficient"/"adequate"/"surplus"
+    lai_band: Optional[str] = None    # "sparse"/"moderate"/"dense"
+    weather_summary: Optional[str] = None   # Deterministic NL weather (tier 2/3)
+    soil_report: Optional[str] = None       # Filled only on inspect_soil
+    crop_report: Optional[str] = None       # Filled only on inspect_crop
 
 
 # ---------------------------------------------------------------------------

@@ -60,17 +60,19 @@ The WOFOST-inspired crop growth simulator captures real agricultural dynamics: t
 
 ## Tasks
 
-| ID | Name | Difficulty | Location | Budget | Key Challenge |
-|----|------|------------|----------|--------|---------------|
-| 1 | Basic Crop Growth | Easy | Netherlands | $800 | Fertilize at right growth stages, harvest at maturity |
-| 2 | Water-Efficient Farming | Medium | Iowa, USA | $450 | Balance yield vs water conservation under variable weather |
-| 3 | Precision Agriculture | Hard | Punjab, India | $300 | Maximize yield + minimize water + stay in budget in drought conditions |
+| ID | Name | Difficulty | Location | Budget | Observability | Key Challenge |
+|----|------|------------|----------|--------|---------------|---------------|
+| 1 | Basic Crop Growth | Easy | Netherlands | $800 | Tier 1 (full numeric) | Fertilize at right growth stages, harvest at maturity |
+| 2 | Water-Efficient Farming | Medium | Iowa, USA | $450 | Tier 2 (hidden DVS/SM, bands + NL weather) | Balance yield vs water conservation with partial information |
+| 3 | Precision Agriculture | Hard | Punjab, India | $300 | Tier 3 (most fields hidden, bucketed weather) | Maximize yield + minimize water + stay in budget under information scarcity |
 
 **Why Task 3 is genuinely hard:**
 - Punjab has minimal rainfall during the wheat season — irrigation is essential but expensive
 - Budget is tight ($300) — every irrigation/fertilization decision must be justified
+- Most precise sensor readings are hidden — the agent sees coarsened bands and bucketed weather
+- Two inspect actions (`inspect_soil` at $10, `inspect_crop` at $20) reveal exact values but cost budget and a week of growing time
 - Scoring weights yield (35%), water efficiency (20%), cost efficiency (18%), timing (15%), and harvest timing (12%) — no single strategy dominates
-- Target yield is the *universal* maximum potential production across all three locations — Task 3 creates genuine planning tension because the tight budget forces agents to prioritize which interventions matter most, and harder locations score lower by design
+- An LLM agent that strategically inspects and reasons over NL observations can outperform the greedy heuristic, which operates blindly on midpoint estimates
 
 ---
 
@@ -85,8 +87,10 @@ The WOFOST-inspired crop growth simulator captures real agricultural dynamics: t
 
 | Field | Type | Values | Description |
 |-------|------|--------|-------------|
-| `action_type` | str | `irrigate`, `fertilize`, `harvest`, `wait` | Weekly management decision |
+| `action_type` | str | `irrigate`, `fertilize`, `harvest`, `wait`, `inspect_soil`, `inspect_crop` | Weekly management decision |
 | `amount` | float | 0-10 cm (irrigate), 0-50 kg N/ha (fertilize), 0 (others) | Resource amount |
+
+**Inspect actions** (new): `inspect_soil` ($10) reveals exact soil moisture, nitrogen, and water stress. `inspect_crop` ($20) reveals exact DVS, LAI, biomass, and grain weight. Both cost budget and one week of simulation time. Available on all tiers, but most valuable on Tier 2/3 where numeric readings are hidden.
 
 ---
 
@@ -105,6 +109,13 @@ The WOFOST-inspired crop growth simulator captures real agricultural dynamics: t
 | `control_features` | `ControlFeatures` | Derived RL-facing features (see below) |
 | `advisory_text` | str \| None | Deterministic factual summary of current crop state |
 | `conflicts` | list[str] | Feedback on invalid actions |
+| `observability_tier` | int | 1=full numeric, 2=mixed bands+NL, 3=NL-heavy |
+| `sm_band` | str \| None | Coarsened soil moisture band (tier 2/3): critical/low/adequate/high |
+| `n_visual` | str \| None | Coarsened nitrogen band (tier 2/3): deficient/adequate/surplus |
+| `lai_band` | str \| None | Coarsened canopy band (tier 2/3): sparse/moderate/dense |
+| `weather_summary` | str \| None | NL weather forecast (tier 2: exact per-day, tier 3: bucketed) |
+| `soil_report` | str \| None | Exact soil readings (only after inspect_soil) |
+| `crop_report` | str \| None | Exact crop readings (only after inspect_crop) |
 
 All typed sub-models (`CropStatus`, `SoilStatus`, `ResourcesUsed`, `ControlFeatures`) are Pydantic models with explicit field types, providing IDE autocomplete and serialization safety.
 
@@ -189,11 +200,11 @@ The rubric is provided by `CropManagementRubric` (in `server/rubric.py`), a thin
 | Task | Score |
 |------|-------|
 | 1 (Easy) | 0.8689 |
-| 2 (Medium) | 0.8242 |
-| 3 (Hard) | 0.6776 |
-| **Overall** | **0.7902** |
+| 2 (Medium) | 0.7992 |
+| 3 (Hard) | 0.6522 |
+| **Overall** | **0.7734** |
 
-These scores are produced by the current greedy heuristic, which uses deficit-based irrigation, WOFOST-calibrated fertilizer timing/amounts, and constants shared with the reward module.
+These scores are produced by the greedy heuristic, which uses deficit-based irrigation, WOFOST-calibrated fertilizer timing/amounts, and constants shared with the reward module. On Tier 2/3, the greedy heuristic falls back to midpoint estimates from growth stage labels and soil moisture bands — intentionally imprecise, which degrades fertilizer timing and irrigation precision. An LLM agent that strategically uses inspect actions and reasons over NL observations can outperform the greedy baseline significantly on Tasks 2 and 3.
 
 ---
 

@@ -740,7 +740,7 @@ def test_baseline_scores_stable():
     If this test breaks, either the grading formula, reward shaping,
     crop parameters, or greedy heuristic changed — update README/ARCHITECTURE.
     """
-    expected = {1: 0.8689, 2: 0.8242, 3: 0.6776}
+    expected = {1: 0.8689, 2: 0.7992, 3: 0.6522}
     for task_id, expected_score in expected.items():
         env = CropEnvironment()
         obs = env.reset(seed=SEED, task_id=task_id)
@@ -776,3 +776,145 @@ def test_yaml_missing_keys_raises_value_error(tmp_path):
     from server.crop_params import load_profile_from_yaml
     with pytest.raises(ValueError, match="Missing required key"):
         load_profile_from_yaml(incomplete)
+
+
+# ---------------------------------------------------------------------------
+# Partial observability tests
+# ---------------------------------------------------------------------------
+
+def test_tier1_full_observability():
+    """Task 1 (tier 1) must expose all exact numeric values."""
+    env = CropEnvironment()
+    obs = env.reset(seed=SEED, task_id=1)
+    assert obs.observability_tier == 1
+    assert obs.crop_status.dvs >= 0
+    assert obs.soil_status.sm >= 0
+    assert obs.dvs_hidden is False
+    assert obs.sm_hidden is False
+    assert obs.sm_band is None
+    assert obs.weather_summary is None
+    assert len(obs.weather_forecast) > 0
+
+
+def test_tier2_hidden_fields():
+    """Task 2 (tier 2) must hide DVS, SM, n_availability, water_stress."""
+    env = CropEnvironment()
+    obs = env.reset(seed=SEED, task_id=2)
+    assert obs.observability_tier == 2
+    assert obs.crop_status.dvs == -1.0
+    assert obs.soil_status.sm == -1.0
+    assert obs.soil_status.n_availability == -1.0
+    assert obs.soil_status.water_stress == -1.0
+    assert obs.dvs_hidden is True
+    assert obs.sm_hidden is True
+    # Bands must be populated
+    assert obs.sm_band in ("critical", "low", "adequate", "high")
+    assert obs.n_visual in ("deficient", "adequate", "surplus")
+    assert obs.lai_band in ("sparse", "moderate", "dense")
+    # Weather forecast should be empty, summary should be NL
+    assert obs.weather_forecast == []
+    assert obs.weather_summary is not None and len(obs.weather_summary) > 10
+    # Control features should be sentinel
+    assert obs.control_features.forecast_rain_3d == -1.0
+    assert obs.control_features.dvs_distance_to_next_fertilizer_window == -1.0
+    # growth_stage still visible
+    assert obs.crop_status.growth_stage != ""
+
+
+def test_tier3_additional_hidden_fields():
+    """Task 3 (tier 3) must additionally hide LAI, TAGP, TWSO."""
+    env = CropEnvironment()
+    obs = env.reset(seed=SEED, task_id=3)
+    assert obs.observability_tier == 3
+    assert obs.crop_status.lai == -1.0
+    assert obs.crop_status.tagp == -1.0
+    assert obs.crop_status.twso == -1.0
+    # DVS and SM also hidden
+    assert obs.crop_status.dvs == -1.0
+    assert obs.soil_status.sm == -1.0
+
+
+def test_inspect_soil_reveals_exact():
+    """inspect_soil on tier 2 must produce a soil_report with exact values."""
+    env = CropEnvironment()
+    obs = env.reset(seed=SEED, task_id=2)
+    # SM is hidden
+    assert obs.soil_status.sm == -1.0
+    # Now inspect soil
+    obs = env.step(CropAction(action_type="inspect_soil", amount=0.0))
+    assert obs.soil_report is not None
+    assert "moisture at" in obs.soil_report.lower()
+    # SM is still hidden in the numeric field (inspect reveals via report only)
+    assert obs.soil_status.sm == -1.0
+
+
+def test_inspect_crop_reveals_exact():
+    """inspect_crop on tier 2 must produce a crop_report with exact values."""
+    env = CropEnvironment()
+    obs = env.reset(seed=SEED, task_id=2)
+    obs = env.step(CropAction(action_type="inspect_crop", amount=0.0))
+    assert obs.crop_report is not None
+    assert "development stage" in obs.crop_report.lower()
+
+
+def test_inspect_costs_budget():
+    """inspect_soil costs $10, inspect_crop costs $20 from the budget."""
+    env = CropEnvironment()
+    obs = env.reset(seed=SEED, task_id=2)
+    budget_before = obs.resources_used.budget_remaining
+    obs = env.step(CropAction(action_type="inspect_soil"))
+    assert obs.resources_used.budget_remaining == pytest.approx(budget_before - 10.0, abs=0.01)
+    budget_before2 = obs.resources_used.budget_remaining
+    obs = env.step(CropAction(action_type="inspect_crop"))
+    assert obs.resources_used.budget_remaining == pytest.approx(budget_before2 - 20.0, abs=0.01)
+
+
+def test_inspect_over_budget_fallback():
+    """Inspect action over budget must produce a conflict and act as wait."""
+    env = CropEnvironment()
+    obs = env.reset(seed=SEED, task_id=3)  # $300 budget
+    # Drain budget via irrigation until near zero
+    while obs.resources_used.budget_remaining > 15 and not obs.done:
+        obs = env.step(CropAction(action_type="irrigate", amount=10.0))
+    if obs.done:
+        return  # Episode ended, can't test — acceptable
+    budget_before = obs.resources_used.budget_remaining
+    obs = env.step(CropAction(action_type="inspect_crop"))  # $20, might exceed
+    if budget_before < 20:
+        assert any("Cannot afford" in c for c in obs.conflicts)
+        assert obs.resources_used.budget_remaining == pytest.approx(budget_before, abs=0.01)
+
+
+def test_tier2_advisory_no_exact_dvs_sm():
+    """Tier 2/3 advisory must not contain exact DVS or SM percentage values."""
+    env = CropEnvironment()
+    obs = env.reset(seed=SEED, task_id=2)
+    advisory = obs.advisory_text
+    assert advisory is not None
+    # Should NOT contain "DVS X.XX" pattern
+    import re
+    assert not re.search(r"DVS \d+\.\d+", advisory), f"Advisory leaks DVS: {advisory}"
+    assert not re.search(r"at \d+%", advisory), f"Advisory leaks SM%: {advisory}"
+
+
+def test_tier3_weather_bucketed():
+    """Tier 3 weather_summary must use bucketed format, not exact values."""
+    env = CropEnvironment()
+    obs = env.reset(seed=SEED, task_id=3)
+    ws = obs.weather_summary
+    assert ws is not None
+    # Should contain bucket labels
+    assert any(label in ws.lower() for label in ["warm", "cool", "hot", "mild", "cold", "very hot"])
+    assert "Day 1:" in ws
+
+
+def test_tier1_unchanged_after_upgrade():
+    """Task 1 must produce identical greedy trajectory as before upgrade."""
+    env = CropEnvironment()
+    obs = env.reset(seed=SEED, task_id=1)
+    fert_done: set = set()
+    steps = 0
+    while not obs.done:
+        obs = env.step(CropAction(**greedy_action(obs, fert_done)))
+        steps += 1
+    assert obs.reward == pytest.approx(0.8689, abs=0.001)
