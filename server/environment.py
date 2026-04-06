@@ -275,12 +275,14 @@ class CropEnvironment(
             )
 
         # Compute intent reward before advancing
+        # Use original action type (including inspect) for reward shaping
+        reward_action_type = inspect_performed if inspect_performed else action_type
         forecast_rain_3d = sum(
             day["rain"]
             for day in self._sim.get_weather_forecast(self._sim.current_day + 1, n_days=3)
         )
         intent_reward = compute_step_reward(
-            action_type=action_type,
+            action_type=reward_action_type,
             dvs=self._sim.dvs,
             sm=self._sim.sm,
             amount=amount,
@@ -307,7 +309,7 @@ class CropEnvironment(
         self._sync_state()
 
         delta_reward = compute_delta_reward(
-            action_type=action_type,
+            action_type=reward_action_type,
             pre_sm=pre_sm,
             post_sm=self._sim.sm,
             pre_water_stress=pre_water_stress,
@@ -638,6 +640,7 @@ class CropEnvironment(
                 budget_remaining=budget_remaining,
                 budget_total=scenario["budget"],
                 location=scenario["location"],
+                fert_count=self._state.fertilizer_events_count,
             ),
         )
 
@@ -721,6 +724,7 @@ class CropEnvironment(
                 budget_total=scenario["budget"],
                 location=scenario["location"],
                 tier=tier,
+                fert_count=self._state.fertilizer_events_count,
             )
 
         if tier >= 3:

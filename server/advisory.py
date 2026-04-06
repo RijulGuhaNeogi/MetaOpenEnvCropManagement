@@ -79,6 +79,7 @@ def generate_advisory(
     budget_total: float,
     location: str,
     tier: int = 1,
+    fert_count: int = 0,
 ) -> str:
     """Generate a neutral advisory paragraph from current field state.
 
@@ -126,9 +127,29 @@ def generate_advisory(
 
     # ── Fertilizer window context ──
     if 0.20 <= dvs <= 0.40:
-        parts.append("Crop is in the first fertilization window (DVS 0.20-0.40, target 0.30).")
+        if tier == 1:
+            parts.append(f"Crop is in the first fertilization window (DVS 0.20-0.40, target 0.30, currently {dvs:.2f}).")
+        else:
+            parts.append("Crop is in the first fertilization window (DVS 0.20-0.40, target 0.30).")
+        if n_availability < 0.5:
+            parts.append("Nitrogen is deficient — a larger application (40-50 kg/ha) is recommended.")
+        elif n_availability < 0.8:
+            parts.append("Nitrogen is moderate — apply 35-50 kg/ha.")
+        else:
+            parts.append("Nitrogen is adequate — apply 20-35 kg/ha.")
+        if tier >= 2 and fert_count == 0:
+            parts.append("Consider inspect_soil ($10) to check exact nitrogen level.")
     elif 0.50 <= dvs <= 0.70:
-        parts.append("Crop is in the second fertilization window (DVS 0.50-0.70, target 0.60).")
+        if tier == 1:
+            parts.append(f"Crop is in the second fertilization window (DVS 0.50-0.70, target 0.60, currently {dvs:.2f}).")
+        else:
+            parts.append("Crop is in the second fertilization window (DVS 0.50-0.70, target 0.60).")
+        if n_availability < 0.5:
+            parts.append("Nitrogen is deficient — apply 40-50 kg/ha.")
+        elif n_availability < 0.8:
+            parts.append("Nitrogen is moderate — apply 35-50 kg/ha.")
+        else:
+            parts.append("Nitrogen is adequate — apply 15-25 kg/ha.")
     elif 0.15 <= dvs < 0.20:
         parts.append("First fertilization window approaching soon.")
     elif 0.42 <= dvs < 0.50:
@@ -166,8 +187,11 @@ def generate_advisory(
         alerts.append("Crop approaching full maturity — harvest window (DVS 1.80-2.00) is open and narrowing.")
     elif dvs >= 1.80:
         alerts.append("Crop has reached maturity — optimal harvest window (DVS 1.80-2.00) is open.")
-    elif dvs >= 1.7:
-        alerts.append("Ripening phase — approaching harvest window at DVS 1.80.")
+    elif dvs >= 1.50:
+        if tier >= 2:
+            alerts.append("Ripening phase — DVS hidden. Use inspect_crop ($20) to confirm DVS before harvesting. Harvest only when DVS >= 1.80.")
+        elif dvs >= 1.7:
+            alerts.append("Ripening phase — approaching harvest window at DVS 1.80.")
 
     # ── Assemble ──
     text = " ".join(parts)

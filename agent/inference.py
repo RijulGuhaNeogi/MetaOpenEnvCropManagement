@@ -68,52 +68,24 @@ if MODEL_NAME and HF_TOKEN:
 
 
 SYSTEM_PROMPT = """\
-You are a precision agriculture advisor managing wheat for one season.
-Each step = one week. Return ONLY a JSON object: {"action_type": "...", "amount": ...}
+Wheat crop advisor. 1 step=1 week. Reply ONLY with JSON: {"action_type":"...","amount":...}
 
-ACTIONS (check in this order every step):
+CHECK IN ORDER EACH STEP:
 
-1. HARVEST — Harvest when the crop is fully mature and yield has peaked.
-   • Watch the Yield (TWSO) value each step. When it stops increasing or
-     starts decreasing, the crop is past peak — harvest immediately.
-   • If growth_stage = "mature": harvest now.
-   • If growth_stage = "ripening" and values are hidden: consider using
-     inspect_crop to check exact status before deciding.
-   → {"action_type": "harvest", "amount": 0}
+1. HARVEST — DVS>=1.80 → harvest. If DVS hidden: inspect_crop ONCE at growth_stage="ripening", harvest only when DVS>=1.80 confirmed. Advisory says "harvest window open" → harvest. MUST harvest explicitly; auto-harvest@DVS2.0=20% credit.
 
-2. FERTILIZE — Apply nitrogen twice during the growing season.
-   • First application during early vegetative growth.
-   • Second application during flowering / early reproductive stage.
-   • Watch the step reward after fertilizing — positive means good timing.
-   → {"action_type": "fertilize", "amount": 18}  (adjust amount as needed)
+2. FERTILIZE — Only when in_fert_window=YES or advisory says "fertilization window". Max 2 total (stop at fert_count=2).
+ Dose by nitrogen status:
+  Tier1: n_avail<0.6→50kg, 0.6-0.8→35kg, >0.8→20kg
+  Tier2/3: "deficient"→50kg, "moderate"→40kg, "adequate"→25kg, "surplus"→15kg
 
-3. IRRIGATE — When soil is dry and no significant rain is forecast:
-   • Check soil moisture or moisture band each step.
-   • If moisture is low and forecast shows little rain, irrigate.
-   • If rain is coming soon, wait — save water and money.
-   • Dose: enough to bring soil back to a healthy level, but don't overdo it.
-   → {"action_type": "irrigate", "amount": 3.0}
+3. IRRIGATE — Tier1: moisture<0.28 & rain3d<0.3→irrigate. Tier2/3: moisture_band="low"/"critical" & no rain forecast. Dose: sm_gap_to_optimal×90, or 3cm if unknown.
 
-4. INSPECT (harder tasks where values are hidden):
-   • inspect_crop: reveals exact DVS, LAI, yield. Use when unsure about
-     harvest readiness or crop health.
-   • inspect_soil: reveals exact moisture, stress. Use when uncertain about
-     irrigation need.
-   • Costs money — only inspect when the information will change your decision.
-   → {"action_type": "inspect_crop", "amount": 0}
+4. INSPECT (tier2/3 only) — inspect_crop($20) ONCE at "ripening" for DVS. inspect_soil($10) ONCE before 1st fert if N unclear. Skip if budget_remaining<$50 (except harvest timing).
 
-5. WAIT — If the crop is healthy, soil is moist enough, and nothing is urgent.
-   → {"action_type": "wait", "amount": 0}
+5. WAIT — if nothing above applies.
 
-STEP FEEDBACK: After each action you see "Last action: X → reward: +Y.YY".
-Positive = good decision. Negative = bad decision. Use this signal to learn:
-  • If irrigating got negative reward, soil was already wet or rain was coming.
-  • If fertilizing got negative reward, timing or amount was wrong.
-  • If waiting got negative reward, the crop was stressed and needed action.
-  • Track yield trend — if it starts declining, harvest before more is lost.
-
-BUDGET: Always check budget_remaining before spending.
-Return ONLY valid JSON, no explanation."""
+Read advisory each step. Positive reward=good, negative=bad. Check budget_remaining before spending. JSON only."""
 
 
 def compress_observation(obs, prev_action: str | None = None, prev_reward: float | None = None) -> str:
@@ -128,10 +100,20 @@ def compress_observation(obs, prev_action: str | None = None, prev_reward: float
 
     lines = []
 
-    # Reward feedback from previous action
+    # Reward feedback from previous action — with brief diagnostic hint
     if prev_action is not None and prev_reward is not None:
         sign = "+" if prev_reward >= 0 else ""
-        lines.append(f"Last action: {prev_action} → reward: {sign}{prev_reward:.2f}")
+        if prev_reward > 0.10:
+            hint = "strong positive — good decision"
+        elif prev_reward > 0.02:
+            hint = "mildly positive"
+        elif prev_reward > -0.02:
+            hint = "neutral"
+        elif prev_reward > -0.06:
+            hint = "mildly negative — consider adjusting"
+        else:
+            hint = "negative — wrong action or timing"
+        lines.append(f"Last action: {prev_action} → reward: {sign}{prev_reward:.2f} ({hint})")
 
     lines.extend([
         f"Task: {obs.task_name} (tier {tier}) | Day {obs.day}/{obs.day + obs.days_remaining}",
@@ -306,6 +288,8 @@ def call_llm(obs, prev_action: str | None = None, prev_reward: float | None = No
 
     if "action_type" not in result:
         return {}
+    # Normalize case — some models return "WAIT" / "Fertilize" etc.
+    result["action_type"] = result["action_type"].lower().strip()
     return result
 
 

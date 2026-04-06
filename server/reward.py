@@ -79,7 +79,28 @@ def compute_step_reward(
         # Small magnitude so it never dominates an actual action reward.
         stress_penalty = max(0.0, 1.0 - water_stress) * -0.04   # up to -0.04 at full stress
         n_penalty = max(0.0, 0.5 - n_availability) * -0.03      # up to -0.015 at n=0.0
-        return _clamp(stress_penalty + n_penalty, -0.06, 0.0)
+        # Penalise waiting inside a fert window when crop still needs N
+        fert_window_penalty = 0.0
+        if n_availability < 0.7 and (
+            (FERT_WINDOW_1[0] <= dvs <= FERT_WINDOW_1[1])
+            or (FERT_WINDOW_2[0] <= dvs <= FERT_WINDOW_2[1])
+        ):
+            fert_window_penalty = -0.015
+        return _clamp(stress_penalty + n_penalty + fert_window_penalty, -0.06, 0.0)
+
+    elif action_type in ("inspect_soil", "inspect_crop"):
+        # Information-gathering: context-sensitive reward to encourage
+        # strategic inspection on hidden tiers.
+        # Higher reward for inspect_crop at ripening (harvest-timing critical)
+        # and inspect_soil during fert window (dose calibration).
+        if action_type == "inspect_crop" and dvs >= 1.5:
+            return _clamp(0.03, -0.02, 0.04)  # Ripening — high-value
+        if action_type == "inspect_soil" and (
+            (FERT_WINDOW_1[0] <= dvs <= FERT_WINDOW_1[1])
+            or (FERT_WINDOW_2[0] <= dvs <= FERT_WINDOW_2[1])
+        ):
+            return _clamp(0.02, -0.02, 0.03)  # In fert window — moderate-value
+        return _clamp(0.01, -0.02, 0.02)
 
     elif action_type == "irrigate":
         target_sm = (target_sm_low + target_sm_high) / 2.0
