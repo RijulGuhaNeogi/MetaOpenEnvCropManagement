@@ -42,8 +42,8 @@ from agent.inference import (
 # ---------------------------------------------------------------------------
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "")
-HF_TOKEN = os.getenv("HF_TOKEN", "") or os.getenv("API_KEY", "")
-ENV_URL = os.getenv("ENV_URL", "http://localhost:8000")
+HF_TOKEN = os.getenv("HF_TOKEN")
+ENV_URL = os.getenv("ENV_URL", "http://localhost:7860")
 TASK_ID = os.getenv("TASK_ID", "")  # empty = run all 3
 SEED = int(os.getenv("SEED", "42"))
 BENCHMARK = "crop_management"
@@ -164,7 +164,7 @@ def run_task(task_id: int, task_name: str) -> float:
         success = score >= SUCCESS_THRESHOLD
 
     except Exception as exc:
-        print(f"[DEBUG] Task {task_id} error: {exc}", flush=True)
+        print(f"[DEBUG] Task {task_id} error: {exc}", file=sys.stderr, flush=True)
 
     finally:
         log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
@@ -200,7 +200,7 @@ def main() -> None:
     scores: dict[int, float] = {}
     for tid in task_ids:
         if tid not in available:
-            print(f"[DEBUG] Task {tid} not available, skipping", flush=True)
+            print(f"[DEBUG] Task {tid} not available, skipping", file=sys.stderr, flush=True)
             continue
         task_name = available[tid]["name"]
         scores[tid] = run_task(tid, task_name)
