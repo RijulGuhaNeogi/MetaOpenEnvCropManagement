@@ -1,7 +1,7 @@
 """FastAPI application entry point.
 
 Uses OpenEnv's create_app() to automatically register the standard
-endpoints: /health, /reset, /step, /state, /ws, /docs, /web.
+endpoints: /health, /reset, /step, /state, /ws, and /docs.
 
 The custom /tasks endpoint lists available task definitions.
 
@@ -14,6 +14,8 @@ Usage:
     uvicorn server.app:app --host 0.0.0.0 --port 8000
 """
 from typing import Any
+
+from fastapi.responses import RedirectResponse
 
 from openenv.core.env_server import create_app
 from pydantic import BaseModel
@@ -43,6 +45,16 @@ app = create_app(
     CropObservation,
     env_name="crop_management",
 )
+
+
+@app.get("/", include_in_schema=False)
+def root_redirect():
+    return RedirectResponse(url="/docs", status_code=307)
+
+
+@app.get("/web", include_in_schema=False)
+def web_redirect():
+    return RedirectResponse(url="/docs", status_code=307)
 
 
 @app.post("/grader")
