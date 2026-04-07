@@ -37,9 +37,9 @@ from models import CropAction
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
-MODEL_NAME = os.getenv("MODEL_NAME", "")
-API_KEY = os.getenv("API_KEY") or os.getenv("HF_TOKEN")
+API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
+API_BASE_URL = os.getenv("API_BASE_URL") or "https://router.huggingface.co/v1"
+MODEL_NAME = os.getenv("MODEL_NAME") or "Qwen/Qwen2.5-72B-Instruct"
 ENV_URL = os.getenv("ENV_URL", "http://localhost:7860")
 
 SEED = 42
@@ -63,7 +63,7 @@ llm_credit_exhausted = False
 
 llm_client: OpenAI | None = None
 
-if MODEL_NAME and API_KEY:
+if API_KEY:
     llm_client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
 
 
