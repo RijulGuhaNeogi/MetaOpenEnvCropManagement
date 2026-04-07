@@ -176,10 +176,12 @@ Current shaping highlights:
   - peaks near DVS 0.30 and 0.60 rather than rewarding the full window equally
   - penalizes excess seasonal nitrogen and late ineffective application
 - **Harvest**
-  - rewards harvesting in the maturity window around DVS 1.8–2.05
+  - rewards harvesting in the maturity window DVS 1.8–2.0
   - penalizes early and late harvest
 - **Wait**
-  - remains neutral to avoid lazy-wait exploitation
+  - penalizes inaction when the crop is suffering (water stress or nitrogen deficiency)
+  - adds a fert-window penalty when N is low and DVS is past the target
+  - small magnitude so it never dominates an actual action reward
 
 ### Rubric System (RFC 004)
 
@@ -221,9 +223,10 @@ MetaHackathonPrep/
 │   └── benchmark_sweep.py  # Reusable multi-seed greedy benchmark utility
 ├── docs/
 │   ├── ARCHITECTURE.md     # Comprehensive architecture document
-│   ├── hackathonBriefing.md# Bootcamp alignment & checklist
-│   ├── FUTURE_SCOPE_PCSE.md# PCSE migration plan
-│   └── REFERENCES.md       # Scientific references (WOFOST, Boogaard et al.)
+│   ├── HACKATHON_MASTER.md # Hackathon requirements synthesis & checklist
+│   ├── REFERENCES.md       # Scientific references (WOFOST, Boogaard et al.)
+│   ├── SUBMISSION_READINESS.md  # Pre-submission compliance report
+│   └── HackathonSubmissionUpdates  # Submission feedback log
 ├── examples/
 │   ├── direct_benchmark.py # Minimal direct-environment benchmark example
 │   └── client_greedy_run.py# Minimal WebSocket client example
@@ -245,9 +248,10 @@ MetaHackathonPrep/
 │   ├── scenarios.py        # Seeded weather + scenario generator (3 locations)
 │   └── tasks.py            # Task definitions (3 difficulty levels)
 ├── tests/
-│   ├── test_smoke.py       # Smoke + RL + rubric tests
-│   ├── test_integration.py # HTTP endpoint integration tests
-│   └── test_ws_episode.py  # WebSocket full-episode tests
+│   ├── test_smoke.py       # Smoke + RL + rubric tests (54 tests)
+│   ├── test_integration.py # HTTP endpoint integration tests (7 tests)
+│   ├── test_submission_surface.py  # Competition format compliance tests (6 tests)
+│   └── test_ws_episode.py  # WebSocket full-episode tests (3 tests)
 ├── models.py               # CropAction, CropObservation, CropState
 ├── client.py               # WebSocket EnvClient subclass
 ├── inference.py            # Competition inference script (root entrypoint)
@@ -305,6 +309,13 @@ curl http://localhost:8000/health
 
 curl http://localhost:8000/tasks
 # {"tasks": [{"id": 1, "name": "Basic Crop Growth", ...}, ...]}
+
+curl http://localhost:8000/baseline
+# Deterministic oracle scores for all 3 tasks (cached, seed=42)
+
+curl -X POST http://localhost:8000/grader -H 'Content-Type: application/json' \
+  -d '{"actual_yield": 5000, "target_yield": 8000, "total_water": 10, "total_n": 60, "total_cost": 100, "budget": 800, "harvest_dvs": 1.9, "harvested": true, "actions_taken": [], "task_id": 1}'
+# {"score": ..., "breakdown": {...}}
 ```
 
 ---
@@ -472,7 +483,7 @@ Current test coverage includes:
 - passive-policy and extra-fertilizer regression checks
 - late-harvest boundary regression checks
 
-The full test suite has **51 passing tests** (41 smoke/rubric/weather + 7 HTTP integration + 3 real WebSocket transport).
+The full test suite has **70 passing tests** (54 smoke/rubric/weather + 7 HTTP integration + 6 submission surface + 3 real WebSocket transport).
 
 ## Limitations
 

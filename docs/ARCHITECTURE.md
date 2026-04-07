@@ -1,7 +1,7 @@
 # Architecture — Precision Agriculture Crop Management
 
-> **Last updated:** June 2025
-> **Version:** 2.0 — Updated with WOFOST grounding, YAML configs, advisory text, constants extraction
+> **Last updated:** April 2026
+> **Version:** 2.1 — Updated folder structure, endpoint listing, test coverage, harvest DVS window
 
 ---
 
@@ -12,7 +12,7 @@ This project is a deterministic, multi-step precision agriculture environment bu
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                        AGENT LAYER                                      │
-│  agent/inference.py  ── LLM policy + greedy heuristic + orchestration  │
+│  agent/inference.py  ── LLM policy + oracle baseline + orchestration   │
 │  agent/training_adapter.py ── discrete RL action vocabulary            │
 │  agent/benchmark_sweep.py  ── multi-seed evaluation                    │
 └───────────────────────────────┬─────────────────────────────────────────┘
@@ -76,7 +76,10 @@ All models use Pydantic `BaseModel` with `extra="forbid"` and inherit from OpenE
 
 - Creates the FastAPI app via `create_app(CropEnvironment, CropAction, CropObservation)`
 - Auto-registers: `/health`, `/reset`, `/step`, `/state`, `/ws`, `/docs`, `/web`
-- Custom endpoint: `/tasks` — lists available task definitions
+- Custom endpoints:
+  - `/tasks` (GET) — lists available task definitions
+  - `/grader` (POST) — grades an episode given metrics: returns `{score, breakdown}`
+  - `/baseline` (GET) — deterministic oracle scores for all tasks (seed=42, cached)
 - Entry point: `uvicorn server.app:app --host 0.0.0.0 --port 8000`
 
 ### 3.3 Environment Interface — `server/environment.py`
@@ -95,7 +98,7 @@ All models use Pydantic `BaseModel` with `extra="forbid"` and inherit from OpenE
 
 ### 3.4 Simulation Engine — `server/crop_sim.py`
 
-Pure-Python WOFOST-inspired model (~250 LOC):
+Pure-Python WOFOST-inspired model (~330 LOC):
 
 | Component | Implementation |
 |-----------|---------------|
@@ -180,7 +183,7 @@ score = 0.35 × yield_score
 | water_efficiency | max(0, 1 − total_water / 50cm) | [0, 1] |
 | cost_efficiency | max(0, 1 − total_cost / budget) | [0, 1] |
 | timing_quality | Mean proximity of N actions to DVS 0.3 & 0.6 | [0.2, 1.0] |
-| harvest_timing | 1.0 if DVS ∈ [1.8, 2.05], penalty otherwise | [0, 1] |
+| harvest_timing | 1.0 if DVS ∈ [1.8, 2.00], penalty otherwise | [0, 1] |
 
 `target_yield` = max potential yield across all 3 locations for that seed (universal target).
 
@@ -344,7 +347,7 @@ grade_episode()  ← grader.py
   ├── water_efficiency = max(0, 1 - total_water / 50)
   ├── cost_efficiency = max(0, 1 - total_cost / budget)
   ├── timing_quality = mean_proximity(fert_actions, DVS [0.3, 0.6])
-  ├── harvest_timing = window([1.8, 2.05])
+  ├── harvest_timing = window([1.8, 2.00])
   └── return weighted sum → [0.0, 1.0]
          │
          ▼
@@ -364,7 +367,9 @@ grade_episode()  ← grader.py
 MetaHackathonPrep/
 ├── models.py                      # [OpenEnv required] Pydantic Action/Observation/State
 ├── client.py                      # [OpenEnv required] WebSocket EnvClient subclass
+├── inference.py                   # [OpenEnv required] Competition inference script
 ├── openenv.yaml                   # [OpenEnv required] Environment metadata
+├── Dockerfile                     # Container image for HuggingFace Spaces
 ├── pyproject.toml                 # Package configuration
 ├── requirements.txt               # Python dependencies
 ├── README.md                      # Project documentation
@@ -378,23 +383,23 @@ MetaHackathonPrep/
 │   ├── crop_sim.py                # WOFOST-inspired crop simulator
 │   ├── environment.py             # CropEnvironment (OpenEnv interface)
 │   ├── scenarios.py               # Deterministic scenario/weather generation
-│   ├── tasks.py                   # Task definitions (3 difficulty levels)
 │   ├── grader.py                  # FROZEN — deterministic 5-metric scoring
 │   ├── rubric.py                  # RFC 004 rubric (CropManagementRubric)
 │   ├── reward.py                  # Dense per-step + trajectory rewards
-│   └── Dockerfile                 # Container for HuggingFace Spaces
+│   └── tasks.py                   # Task definitions (3 difficulty levels)
 │
 ├── agent/                         # Agent-side code (policies, training, evaluation)
 │   ├── __init__.py                # Package exports
-│   ├── inference.py               # LLM + greedy policy + episode orchestration
+│   ├── inference.py               # LLM + oracle baseline + episode orchestration
 │   ├── training_adapter.py        # Discrete RL action vocabulary (8 buckets)
 │   └── benchmark_sweep.py         # Multi-seed evaluation utility
 │
 ├── docs/                          # Documentation
 │   ├── ARCHITECTURE.md            # This document
-│   ├── hackathonBriefing.md       # Bootcamp alignment & checklist
-│   ├── FUTURE_SCOPE_PCSE.md       # PCSE migration plan
-│   └── REFERENCES.md              # Scientific references (WOFOST, Boogaard et al.)
+│   ├── HACKATHON_MASTER.md        # Hackathon requirements synthesis & checklist
+│   ├── REFERENCES.md              # Scientific references (WOFOST, Boogaard et al.)
+│   ├── SUBMISSION_READINESS.md    # Pre-submission compliance report
+│   └── HackathonSubmissionUpdates # Submission feedback log
 │
 ├── configs/                       # YAML crop/soil profiles (override hardcoded defaults)
 │   ├── wheat_nl.yaml
@@ -406,14 +411,13 @@ MetaHackathonPrep/
 │   └── client_greedy_run.py       # WebSocket client example
 │
 ├── tests/                         # Test suite
-│   ├── test_smoke.py              # Smoke + RL + rubric/weather tests
-│   ├── test_integration.py        # HTTP endpoint integration tests
-│   └── test_ws_episode.py         # Real WebSocket transport tests
+│   ├── test_smoke.py              # Smoke + RL + rubric/weather tests (54 tests)
+│   ├── test_integration.py        # HTTP endpoint integration tests (7 tests)
+│   ├── test_submission_surface.py # Competition format compliance tests (6 tests)
+│   └── test_ws_episode.py         # Real WebSocket transport tests (3 tests)
 │
-├── Preparation/                   # Hackathon prep materials
-├── ProblemDetails/                # Problem statement
-├── Samples/                       # Reference env samples
-└── studymaterialLinks/            # OpenEnv tutorial links
+├── ProblemDetails                 # Problem statement (file)
+├── Samples                        # Reference env samples (file)
 ```
 
 ### Separation of Concerns Map
@@ -433,7 +437,7 @@ MetaHackathonPrep/
 | AI policies | `agent/inference.py` | Agent |
 | RL training adapter | `agent/training_adapter.py` | Agent |
 | Policy evaluation | `agent/benchmark_sweep.py` | Agent |
-| Container deployment | `server/Dockerfile` | Infrastructure |
+| Container deployment | `Dockerfile` (root) | Infrastructure |
 
 ---
 
@@ -446,7 +450,7 @@ MetaHackathonPrep/
 | `models.py` at root | `openenv.yaml` → `models: models` |
 | `client.py` at root | `openenv.yaml` → `client: client` |
 | `server/app.py` | `openenv.yaml` → `server: server.app:app` |
-| `server/Dockerfile` | Container build target |
+| `Dockerfile` (root) | Container build target |
 | `openenv.yaml` | Framework metadata |
 
 ### Endpoints (auto-registered by `create_app`)
@@ -459,6 +463,8 @@ MetaHackathonPrep/
 | `/state` | GET | Current environment state |
 | `/ws` | WebSocket | Multi-step episode (preferred) |
 | `/tasks` | GET | Custom: list task definitions |
+| `/grader` | POST | Custom: grade an episode → `{score, breakdown}` |
+| `/baseline` | GET | Custom: oracle scores for all tasks (seed=42, cached) |
 
 ### Compliance Checklist
 
@@ -521,7 +527,7 @@ models.py ← (no internal deps)
 
 ### Current Architecture Limitations
 
-1. **`server/` is a flat directory** — mixes infrastructure (`app.py`, `Dockerfile`), environment interface (`environment.py`), and domain logic (`crop_sim.py`, `scenarios.py`, `grader.py`, `reward.py`, `tasks.py`). Acceptable at current size but should be sub-packaged if more simulation modules are added (e.g., PCSE integration).
+1. **`server/` is a flat directory** — mixes environment interface (`environment.py`) and domain logic (`crop_sim.py`, `scenarios.py`, `grader.py`, `reward.py`, `tasks.py`). Acceptable at current size but should be sub-packaged if more simulation modules are added (e.g., PCSE integration).
 
 2. **`agent/inference.py` has multiple responsibilities** — LLM policy, greedy heuristic, trajectory export, and episode orchestration in one file. A future split into `llm_policy.py`, `greedy_policy.py`, `trajectory.py`, and `runner.py` would improve testability.
 
@@ -531,7 +537,7 @@ models.py ← (no internal deps)
 
 ### Documented Improvement Plans
 
-- **[FUTURE_SCOPE_PCSE.md](FUTURE_SCOPE_PCSE.md)** — Migration from custom simulator to PCSE/WOFOST library
+- Potential future migration from custom simulator to PCSE/WOFOST library for higher biophysical fidelity
 
 ### Key Metrics (Current Baseline)
 

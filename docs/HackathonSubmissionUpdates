@@ -25,6 +25,45 @@ GitHub: https://github.com/RijulGuhaNeogi/MetaOpenEnvCropManagement
 
 HF Space: https://huggingface.co/spaces/RijulGN/crop-management-env
 
+
+	
+Hi Rijul,
+
+Submission #2 for "Hijibiji" did not pass Phase 2 deep validation for the Meta PyTorch Hackathon x Scaler School of Technology, Round 1. Please fix the issue below and resubmit before the deadline.
+
+The check that failed
+
+❌ Docker image build failed
+
+Why it failed
+
+Your Dockerfile failed to build. The most common causes are: syntax errors in the Dockerfile, missing dependencies in requirements.txt, network errors during pip/apt install, or build steps that timeout.
+
+Validator log
+
+Running scope as unit: run-r0f4dbf99d5154907a3d938f28aa6b397.scope
+#0 building with "default" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 894B done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/library/python:3.11-slim
+#2 ERROR: failed to copy: httpReadSeeker: failed open: unexpected status code https://registry-1.docker.io/v2/library/python/manifests/sha256:f966cda3c2d5b990db2a7af10ef891f5ca685c7d0c6a83378948f1cd09c27ec
+
+How to fix it
+
+Build your Dockerfile locally first: docker build -t test .
+Make sure all dependencies are pinned in requirements.txt or pyproject.toml.
+Avoid using --mount=type=ssh (we don't pass SSH agents).
+Check the build log in the dashboard for the exact failing step.
+Why we stopped here: Phase 2 is fail-fast — checks depend on each other, so one failure stops the pipeline. Fixing this should let your next submission progress further.
+
+Your submission
+
+GitHub: https://github.com/RijulGuhaNeogi/MetaOpenEnvCropManagement
+
+HF Space: https://huggingface.co/spaces/RijulGN/crop-management-env
 ___________________________________________
 
 latest updates json dumps from hackathon discord-
