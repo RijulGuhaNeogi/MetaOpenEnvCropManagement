@@ -5,7 +5,7 @@ Inference script for the Precision Agriculture Crop Management OpenEnv environme
 Uses the competition-mandated environment variables:
   API_BASE_URL  – LLM provider base URL
   MODEL_NAME    – model identifier
-  HF_TOKEN      – authentication token
+  API_KEY       – authentication token (evaluator injects API_KEY; HF_TOKEN as fallback)
 
 Can run against a local server (default http://localhost:8000) or a
 remote HuggingFace Space URL passed via ENV_URL.
@@ -26,7 +26,7 @@ log = logging.getLogger(__name__)
 
 from dotenv import load_dotenv
 
-load_dotenv()  # Auto-load .env file if present
+load_dotenv(override=False)  # Auto-load .env file if present; never override evaluator-injected vars
 
 import httpx
 from openai import OpenAI
@@ -39,7 +39,7 @@ from models import CropAction
 # ---------------------------------------------------------------------------
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "")
-HF_TOKEN = os.getenv("HF_TOKEN")
+API_KEY = os.getenv("API_KEY") or os.getenv("HF_TOKEN")
 ENV_URL = os.getenv("ENV_URL", "http://localhost:7860")
 
 SEED = 42
@@ -63,8 +63,8 @@ llm_credit_exhausted = False
 
 llm_client: OpenAI | None = None
 
-if MODEL_NAME and HF_TOKEN:
-    llm_client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
+if MODEL_NAME and API_KEY:
+    llm_client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
 
 
 SYSTEM_PROMPT = """\

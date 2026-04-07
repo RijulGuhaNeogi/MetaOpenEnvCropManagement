@@ -66,6 +66,7 @@ inference:
     - ENV_URL
     - API_BASE_URL
     - MODEL_NAME
+    - API_KEY
     - HF_TOKEN
     - TASK_ID
     - SEED

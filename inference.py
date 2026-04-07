@@ -5,7 +5,7 @@ Competition inference script — Precision Agriculture Crop Management.
 MANDATORY ENV VARS:
     API_BASE_URL   The API endpoint for the LLM.
     MODEL_NAME     The model identifier to use for inference.
-    HF_TOKEN       Your Hugging Face / API key.
+    API_KEY        Authentication token (evaluator injects API_KEY; HF_TOKEN as fallback).
 
 STDOUT FORMAT:
     [START] task=<task_name> env=crop_management model=<model_name>
@@ -20,7 +20,7 @@ from typing import List, Optional
 
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=False)  # never override evaluator-injected env vars
 
 from openai import OpenAI
 
@@ -42,7 +42,7 @@ from agent.inference import (
 # ---------------------------------------------------------------------------
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "")
-HF_TOKEN = os.getenv("HF_TOKEN")
+API_KEY = os.getenv("API_KEY") or os.getenv("HF_TOKEN")
 ENV_URL = os.getenv("ENV_URL", "http://localhost:7860")
 TASK_ID = os.getenv("TASK_ID", "")  # empty = run all 3
 SEED = int(os.getenv("SEED", "42"))

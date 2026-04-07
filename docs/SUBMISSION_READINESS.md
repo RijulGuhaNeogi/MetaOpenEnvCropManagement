@@ -88,7 +88,7 @@ Evidence:
 
 The root `inference.py` currently satisfies the evaluator-facing contract:
 
-- Reads `API_BASE_URL`, `MODEL_NAME`, and `HF_TOKEN`
+- Reads `API_BASE_URL`, `MODEL_NAME`, and `API_KEY` (falls back to `HF_TOKEN`)
 - Uses the OpenAI client interface for LLM requests
 - Emits exact line types in the required order
 - Formats per-step rewards to 2 decimals

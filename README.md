@@ -318,7 +318,8 @@ Create a `.env` file (auto-loaded by `python-dotenv`):
 ```dotenv
 API_BASE_URL=https://router.huggingface.co/v1
 MODEL_NAME=meta-llama/Llama-3.1-8B-Instruct
-HF_TOKEN=hf_your_token_here
+API_KEY=your_api_key_here          # preferred (evaluator injects this)
+HF_TOKEN=hf_your_token_here        # fallback for local development
 ```
 
 Then run:
@@ -346,6 +347,7 @@ Or export the variables directly:
 ```bash
 export API_BASE_URL="https://router.huggingface.co/v1"
 export MODEL_NAME="meta-llama/Llama-3.1-8B-Instruct"
+export API_KEY="your_api_key_here"        # or use HF_TOKEN as fallback
 export HF_TOKEN="hf_your_token_here"
 python inference.py
 ```
@@ -370,7 +372,8 @@ python examples/client_greedy_run.py --base-url http://localhost:8000 --task-id 
 |----------|----------|-------------|
 | `API_BASE_URL` | For LLM mode | LLM API endpoint (OpenAI-compatible) |
 | `MODEL_NAME` | For LLM mode | Model identifier |
-| `HF_TOKEN` | For LLM mode | HuggingFace / API authentication token |
+| `API_KEY` | For LLM mode | API authentication token (evaluator injects this) |
+| `HF_TOKEN` | No | Fallback for `API_KEY` — accepted for local development |
 | `ENV_URL` | No | Server URL (default: `http://localhost:8000`) |
 | `TASK_ID` | No | Run a single task by ID (default: all 3) |
 | `SEED` | No | Random seed for reproducibility (default: 42) |

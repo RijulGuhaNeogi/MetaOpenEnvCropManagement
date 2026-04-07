@@ -206,7 +206,7 @@ Step reward blend: `0.4 × intent + 0.6 × delta`
 ### 3.10 Agent — `agent/inference.py`
 
 Three policy paths:
-1. **LLM-only** — if HF_TOKEN + API_BASE_URL + MODEL_NAME are set
+1. **LLM-only** — if API_KEY (or HF_TOKEN) + API_BASE_URL + MODEL_NAME are set
 2. **LLM + fallback** — on LLM errors, falls back to oracle (auto-disables after 3 consecutive failures)
 3. **Oracle baseline only** — default when no LLM credentials
 
