@@ -91,29 +91,29 @@ def list_tasks():
 
 
 _baseline_cache: dict | None = None
+_ceiling_cache: dict | None = None
 
 
 @app.get("/baseline")
 def run_baseline():
-    """Return deterministic oracle scores for all tasks (seed=42).
+    """Return deterministic greedy-baseline scores for all tasks (seed=42).
 
     Results are cached after first computation since they are fully
-    deterministic — same seed + same oracle policy = same scores.
+    deterministic — same seed + same greedy policy = same scores.
     """
     global _baseline_cache
     if _baseline_cache is not None:
         return _baseline_cache
 
-    from agent.inference import oracle_action as _oracle_action
+    from agent.inference import greedy_action
 
     results = {}
     for task_id in sorted(TASKS.keys()):
         env = CropEnvironment()
         obs = env.reset(seed=42, task_id=task_id)
-        oracle_state: dict = {}
         steps = 0
         while not obs.done:
-            action = CropAction(**_oracle_action(obs, oracle_state))
+            action = CropAction(**greedy_action(obs, {}))
             obs = env.step(action)
             steps += 1
         results[task_id] = {
@@ -126,10 +126,44 @@ def run_baseline():
     scores = [r["score"] for r in results.values()]
     _baseline_cache = {
         "seed": 42,
+        "policy": "greedy",
         "tasks": results,
         "overall_mean": round(sum(scores) / len(scores), 4),
     }
     return _baseline_cache
+
+
+@app.get("/ceiling")
+def run_ceiling():
+    """Return deterministic oracle-ceiling scores for all tasks (seed=42)."""
+    global _ceiling_cache
+    if _ceiling_cache is not None:
+        return _ceiling_cache
+
+    results = {}
+    for task_id in sorted(TASKS.keys()):
+        env = CropEnvironment()
+        obs = env.reset(seed=42, task_id=task_id)
+        steps = 0
+        while not obs.done:
+            action = CropAction(**env.oracle_reference_action())
+            obs = env.step(action)
+            steps += 1
+        results[task_id] = {
+            "task_id": task_id,
+            "name": TASKS[task_id]["name"],
+            "score": obs.reward,
+            "steps": steps,
+        }
+
+    scores = [r["score"] for r in results.values()]
+    _ceiling_cache = {
+        "seed": 42,
+        "policy": "oracle_ceiling",
+        "tasks": results,
+        "overall_mean": round(sum(scores) / len(scores), 4),
+    }
+    return _ceiling_cache
 
 
 def main():

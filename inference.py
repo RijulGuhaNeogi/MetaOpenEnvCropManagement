@@ -30,6 +30,7 @@ from models import CropAction
 # Import reusable logic from the agent module (no duplication)
 from agent.inference import (
     call_llm,
+    greedy_action,
     oracle_action,
     _record_transition,
     _write_trajectory_jsonl,
@@ -108,16 +109,16 @@ def run_task(task_id: int, task_name: str) -> float:
             while not result.done and steps_taken < MAX_CLIENT_STEPS:
                 previous_obs = obs
 
-                # Choose action: LLM with oracle fallback
+                # Choose action: LLM with greedy fallback
                 if llm_client is not None:
                     action_dict = call_llm(obs)
                     policy_name = "llm"
                     if not action_dict or "action_type" not in action_dict:
-                        action_dict = oracle_action(obs, oracle_state)
-                        policy_name = "oracle_fallback"
+                        action_dict = greedy_action(obs, {})
+                        policy_name = "greedy_fallback"
                 else:
-                    action_dict = oracle_action(obs, oracle_state)
-                    policy_name = "oracle"
+                    action_dict = greedy_action(obs, {})
+                    policy_name = "greedy"
 
                 if "amount" not in action_dict:
                     action_dict["amount"] = 0.0

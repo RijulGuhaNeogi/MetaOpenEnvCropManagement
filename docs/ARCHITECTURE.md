@@ -79,7 +79,8 @@ All models use Pydantic `BaseModel` with `extra="forbid"` and inherit from OpenE
 - Custom endpoints:
   - `/tasks` (GET) — lists available task definitions
   - `/grader` (POST) — grades an episode given metrics: returns `{score, breakdown}`
-  - `/baseline` (GET) — deterministic oracle scores for all tasks (seed=42, cached)
+  - `/baseline` (GET) — deterministic greedy baseline scores for all tasks (seed=42, cached)
+  - `/ceiling` (GET) — deterministic oracle ceiling scores for all tasks (seed=42, cached)
 - Entry point: `uvicorn server.app:app --host 0.0.0.0 --port 8000`
 
 ### 3.3 Environment Interface — `server/environment.py`
@@ -221,20 +222,28 @@ Terminal reward blend: `0.7 × trajectory_reward + 0.3 × normalized_harvest_ste
 
 Three policy paths:
 1. **LLM-only** — if API_KEY (or HF_TOKEN) + API_BASE_URL + MODEL_NAME are set
-2. **LLM + fallback** — on LLM errors, falls back to oracle (auto-disables after 3 consecutive failures)
-3. **Oracle baseline only** — default when no LLM credentials
+2. **LLM + fallback** — on LLM errors, falls back to the observation-limited greedy heuristic (auto-disables after 3 consecutive failures)
+3. **Greedy heuristic only** — default when no LLM credentials
+4. **Oracle baseline only** — reserved for ceiling measurement, benchmarks, and diagnostics
 
-**Oracle baseline** (`oracle_action()`) — the theoretically optimal policy:
+**Greedy heuristic** (`greedy_action()`) — the public-surface fallback policy:
 
-The oracle has perfect knowledge of the crop model (WOFOST parameters, thermal
-time constants, N recovery rates) and computes the best possible action at
-every step, independent of observability tier.  It serves as the upper-bound
-reference trajectory.
+The greedy heuristic is intentionally constrained to the same information
+surface that the LLM sees: exact numeric values on tier 1, and masked bands,
+weather summaries, advisory text, and persisted inspect reports on tier 2/3.
+It does not read simulator internals, hidden DVS, or oracle-only state.
+
+**Oracle baseline** (`oracle_reference_action()` in the environment) — the theoretically optimal policy:
+
+The oracle baseline has perfect knowledge of the crop model (WOFOST parameters,
+thermal time constants, N recovery rates) and computes the best possible action
+at every step from an internal tier-1 snapshot, independent of observability
+tier. It serves as the upper-bound reference trajectory.
 
 **Decision logic (priority order):**
-1. Tracks DVS via thermal-time accumulation from `weather_today` (tier-independent)
-2. Tracks N-factor via day-exact reconstruction from fertilization history
-3. **Harvest** when DVS ≥ 1.90 (inside optimal window 1.80–2.00, before shattering at 1.85)
+1. Tracks DVS via exact internal state from the simulator snapshot
+2. Tracks N-factor via exact internal state from the simulator snapshot
+3. **Harvest** inside the optimal grading window 1.80–2.00, as late as safely possible
 4. **Irrigate** when SM < 0.28 (or critical < 0.18) and no significant rain forecast
 5. **Fertilize** at optimal DVS within windows [0.20–0.40] and [0.50–0.70]:
    - Waits for the step with DVS closest to target (0.30 / 0.60)
@@ -242,7 +251,8 @@ reference trajectory.
 6. **Wait** otherwise
 
 **Oracle reference in metadata:**
-At each non-terminal step, the environment calls `oracle_action()` and stores
+At each non-terminal step, the environment calls the perfect-information oracle
+on an internal tier-1 snapshot and stores
 the result in `obs.metadata["oracle_action"]`.  This is **not visible** to the
 LLM (not included in `compress_observation`) — it exists for offline analysis
 and alignment measurement.
@@ -265,7 +275,7 @@ prevent reaching 1.0:
 |------|-------|--------|-------|------|
 | 1 (NL, tier 1) | 0.9593 | 0.975 | 0.951 | 0.847 |
 | 2 (Iowa, tier 2) | 0.9409 | 0.952 | 0.949 | 0.728 |
-| 3 (Punjab, tier 3) | 0.8769 | 0.903 | 0.900 | 0.511 |
+| 3 (Punjab, tier 3) | 0.9067 | 1.000 | 0.937 | 0.550 |
 
 ### 3.11 Step Reward Alignment with Oracle
 
@@ -406,7 +416,7 @@ MetaHackathonPrep/
 │
 ├── agent/                         # Agent-side code (policies, training, evaluation)
 │   ├── __init__.py                # Package exports
-│   ├── inference.py               # LLM + oracle baseline + episode orchestration
+│   ├── inference.py               # LLM + greedy fallback + oracle ceiling helpers
 │   ├── training_adapter.py        # Discrete RL action vocabulary (8 buckets)
 │   └── benchmark_sweep.py         # Multi-seed evaluation utility
 │
@@ -480,7 +490,8 @@ MetaHackathonPrep/
 | `/ws` | WebSocket | Multi-step episode (preferred) |
 | `/tasks` | GET | Custom: list task definitions |
 | `/grader` | POST | Custom: grade an episode → `{score, breakdown}` |
-| `/baseline` | GET | Custom: oracle scores for all tasks (seed=42, cached) |
+| `/baseline` | GET | Custom: greedy baseline scores for all tasks (seed=42, cached) |
+| `/ceiling` | GET | Custom: oracle ceiling scores for all tasks (seed=42, cached) |
 
 ### Compliance Checklist
 

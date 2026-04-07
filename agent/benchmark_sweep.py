@@ -56,11 +56,10 @@ def _parse_args() -> argparse.Namespace:
 def run_episode(task_id: int, seed: int) -> dict:
     env = CropEnvironment()
     obs = env.reset(seed=seed, task_id=task_id)
-    oracle_state = {}
     steps = 0
 
     while not obs.done:
-        action = CropAction(**oracle_action(obs, oracle_state))
+        action = CropAction(**env.oracle_reference_action())
         obs = env.step(action)
         steps += 1
         if steps > 80:

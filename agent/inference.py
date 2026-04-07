@@ -260,7 +260,7 @@ def call_llm(obs, prev_action: str | None = None, prev_reward: float | None = No
 
     Returns a dict with 'action_type' and optionally 'amount', or an
     empty dict on any failure (network error, malformed response, etc.).
-    Falls back to oracle baseline when this returns {}.
+    The runtime falls back to the greedy heuristic when this returns {}.
     """
     global llm_calls, llm_fallbacks, llm_consecutive_errors
     global llm_last_error, llm_credit_exhausted
@@ -301,11 +301,11 @@ def call_llm(obs, prev_action: str | None = None, prev_reward: float | None = No
         if llm_consecutive_errors >= LLM_ERROR_THRESHOLD:
             log.warning(
                 "LLM disabled after %d consecutive errors — "
-                "using oracle baseline for remaining steps",
+                "using greedy heuristic for remaining steps",
                 LLM_ERROR_THRESHOLD,
             )
         else:
-            log.warning("LLM error: %r — falling back to oracle baseline", e)
+            log.warning("LLM error: %r — falling back to greedy heuristic", e)
         return {}
 
     text = response.choices[0].message.content or "{}"
@@ -337,24 +337,239 @@ def call_llm(obs, prev_action: str | None = None, prev_reward: float | None = No
 
 
 # ---------------------------------------------------------------------------
-# Perfect-information oracle baseline (sets the scoring ceiling)
+# Observation-limited greedy heuristic (same information surface as the LLM)
 # ---------------------------------------------------------------------------
-
-# The oracle knows every model parameter, all weather, the full simulation
-# internals.  Observability tiers only hinder the *LLM* agent; the oracle
-# tracks DVS and N-factor from first principles regardless of what is hidden.
 
 from server.constants import (
     FERT_TARGET_DVS_1,
     FERT_TARGET_DVS_2,
     FERT_WINDOW_1,
     FERT_WINDOW_2,
+    HARVEST_DVS_HIGH,
     HARVEST_DVS_LOW,
     SM_BAND_MIDPOINT,
     SM_TARGET_HIGH,
     SM_TARGET_LOW,
 )
 from server.crop_params import CROP_LIBRARY, WOFOSTCropParams
+
+
+def _extract_report_float(report: str | None, pattern: str) -> float | None:
+    if not report:
+        return None
+    match = re.search(pattern, report)
+    if not match:
+        return None
+    try:
+        return float(match.group(1))
+    except ValueError:
+        return None
+
+
+def _exact_dvs_from_public_obs(obs) -> float | None:
+    if obs.crop_status.dvs >= 0:
+        return obs.crop_status.dvs
+    return _extract_report_float(getattr(obs, "crop_report", None), r"Development stage\s+([0-9.]+)")
+
+
+def _exact_sm_from_public_obs(obs) -> float | None:
+    if obs.soil_status.sm >= 0:
+        return obs.soil_status.sm
+    sm_pct = _extract_report_float(getattr(obs, "soil_report", None), r"moisture at\s+([0-9.]+)%")
+    if sm_pct is None:
+        return None
+    return sm_pct / 100.0
+
+
+def _exact_n_from_public_obs(obs) -> float | None:
+    if obs.soil_status.n_availability >= 0:
+        return obs.soil_status.n_availability
+    return _extract_report_float(getattr(obs, "soil_report", None), r"Nitrogen uptake rate\s+([0-9.]+)")
+
+
+def _advisory_lower(obs) -> str:
+    return (getattr(obs, "advisory_text", None) or "").lower()
+
+
+def _weather_summary_lower(obs) -> str:
+    return (getattr(obs, "weather_summary", None) or "").lower()
+
+
+def _rain_3d_public(obs) -> float | None:
+    cf = obs.control_features
+    if cf and cf.forecast_rain_3d >= 0:
+        return cf.forecast_rain_3d
+    weather_summary = _weather_summary_lower(obs)
+    if not weather_summary:
+        return None
+    matches = re.findall(r"(\d+(?:\.\d+)?)cm rain", weather_summary)
+    if matches:
+        try:
+            return sum(float(value) for value in matches[:3])
+        except ValueError:
+            return None
+    if "no forecast available" in weather_summary:
+        return None
+    if weather_summary.count("no rain") >= 3:
+        return 0.0
+    return None
+
+
+def _harvest_window_open_public(obs) -> bool:
+    exact_dvs = _exact_dvs_from_public_obs(obs)
+    if exact_dvs is not None:
+        return exact_dvs >= HARVEST_DVS_LOW
+    return "harvest window" in _advisory_lower(obs)
+
+
+def _fert_window_status_public(obs) -> str | None:
+    exact_dvs = _exact_dvs_from_public_obs(obs)
+    if exact_dvs is not None:
+        if FERT_WINDOW_1[0] <= exact_dvs <= FERT_WINDOW_1[1]:
+            if exact_dvs < 0.25:
+                return "early"
+            if exact_dvs <= 0.35:
+                return "optimal"
+            return "late"
+        if FERT_WINDOW_2[0] <= exact_dvs <= FERT_WINDOW_2[1]:
+            if exact_dvs < 0.55:
+                return "early"
+            if exact_dvs <= 0.65:
+                return "optimal"
+            return "late"
+        return None
+
+    advisory = _advisory_lower(obs)
+    if "early in window" in advisory:
+        return "early"
+    if "near optimal fertilization timing" in advisory:
+        return "optimal"
+    if "late in window" in advisory:
+        return "late"
+
+    cf = obs.control_features
+    if cf and cf.dvs_distance_to_next_fertilizer_window == 0.0:
+        return "window"
+    return None
+
+
+def _fert_window_approaching_public(obs) -> bool:
+    advisory = _advisory_lower(obs)
+    return "fertilization window approaching soon" in advisory
+
+
+def _public_n_status(obs) -> str:
+    exact_n = _exact_n_from_public_obs(obs)
+    if exact_n is not None:
+        if exact_n >= 0.9:
+            return "surplus"
+        if exact_n >= 0.8:
+            return "adequate"
+        if exact_n >= 0.65:
+            return "moderate"
+        if exact_n >= 0.5:
+            return "low"
+        return "very_low"
+
+    visual = getattr(obs, "n_visual", None)
+    if visual in {"surplus", "adequate", "moderate", "low", "very_low"}:
+        return visual
+    return "moderate"
+
+
+def _greedy_fertilizer_dose(obs) -> float:
+    status = _public_n_status(obs)
+    if status == "surplus":
+        return 0.0
+    if status == "adequate":
+        return 15.0
+    if status == "moderate":
+        return 30.0
+    if status == "low":
+        return 45.0
+    return 50.0
+
+
+def _no_rain_public(obs) -> bool:
+    rain_3d = _rain_3d_public(obs)
+    if rain_3d is not None:
+        return rain_3d < 0.3
+
+    advisory = _advisory_lower(obs)
+    if "little rain forecast" in advisory or "no significant rain forecast" in advisory:
+        return True
+
+    weather_summary = _weather_summary_lower(obs)
+    if not weather_summary:
+        return False
+
+    day_clauses = [clause.strip() for clause in weather_summary.split(".") if clause.strip()]
+    if not day_clauses:
+        return False
+    first_days = day_clauses[:3]
+    return all(("no rain" in clause) or ("light rain" in clause) for clause in first_days)
+
+
+def _greedy_irrigation_amount(obs) -> float:
+    cf = obs.control_features
+    if cf and cf.moisture_gap_to_target > 0:
+        amount = cf.moisture_gap_to_target * cf.rooting_depth_cm
+        return round(max(0.5, min(MAX_IRRIGATION_CM, amount)), 2)
+    exact_sm = _exact_sm_from_public_obs(obs)
+    if exact_sm is not None and exact_sm < SM_TARGET_LOW:
+        amount = (TARGET_SM - exact_sm) * (cf.rooting_depth_cm if cf else 90.0)
+        return round(max(0.5, min(MAX_IRRIGATION_CM, amount)), 2)
+    return 3.0
+
+
+def greedy_action(obs, greedy_state: dict | None = None) -> dict:
+    """Observation-limited heuristic using only public agent-visible fields."""
+    if greedy_state is None:
+        greedy_state = {}
+
+    cs = obs.crop_status
+    ru = obs.resources_used
+    cf = obs.control_features
+    tier = getattr(obs, "observability_tier", 1)
+
+    budget_remaining = ru.budget_remaining
+    fert_count = cf.fertilizer_events_count if cf else 0
+    exact_dvs = _exact_dvs_from_public_obs(obs)
+    exact_sm = _exact_sm_from_public_obs(obs)
+
+    if _harvest_window_open_public(obs):
+        return {"action_type": "harvest", "amount": 0.0}
+
+    if tier >= 2 and getattr(obs, "crop_report", None) is None and cs.growth_stage == "ripening" and budget_remaining >= 20.0:
+        return {"action_type": "inspect_crop", "amount": 0.0}
+
+    fert_status = _fert_window_status_public(obs)
+    if tier >= 2 and fert_count == 0 and getattr(obs, "soil_report", None) is None and budget_remaining >= 10.0:
+        if fert_status in {"early", "optimal", "late", "window"} or _fert_window_approaching_public(obs):
+            return {"action_type": "inspect_soil", "amount": 0.0}
+
+    if fert_count < 2 and fert_status in {"optimal", "late"}:
+        dose = _greedy_fertilizer_dose(obs)
+        if dose > 0 and budget_remaining >= ru.fertilizer_cost_per_kg * dose:
+            return {"action_type": "fertilize", "amount": dose}
+
+    if exact_sm is not None:
+        if exact_sm < SM_TARGET_LOW and _no_rain_public(obs):
+            amount = _greedy_irrigation_amount(obs)
+            if budget_remaining >= ru.irrigation_cost_per_cm * amount:
+                return {"action_type": "irrigate", "amount": amount}
+    else:
+        if getattr(obs, "sm_band", None) in {"low", "critical"} and _no_rain_public(obs):
+            amount = 3.0
+            if budget_remaining >= ru.irrigation_cost_per_cm * amount:
+                return {"action_type": "irrigate", "amount": amount}
+
+    return {"action_type": "wait", "amount": 0.0}
+
+
+# ---------------------------------------------------------------------------
+# Perfect-information oracle baseline (sets the scoring ceiling)
+# ---------------------------------------------------------------------------
 
 # Location key → crop params (oracle knows the full model)
 _LOC_CROP_KEY = {
@@ -682,11 +897,11 @@ def run():
                     action_dict = call_llm(obs, prev_action=prev_action_str, prev_reward=prev_step_reward)
                     policy_name = "llm"
                     if not action_dict or "action_type" not in action_dict:
-                        action_dict = oracle_action(obs, oracle_state)
-                        policy_name = "oracle_fallback"
+                        action_dict = greedy_action(obs, {})
+                        policy_name = "greedy_fallback"
                 else:
-                    action_dict = oracle_action(obs, oracle_state)
-                    policy_name = "oracle"
+                    action_dict = greedy_action(obs, {})
+                    policy_name = "greedy"
 
                 # Ensure amount is present
                 if "amount" not in action_dict:
@@ -749,14 +964,14 @@ def run():
             if llm_credit_exhausted:
                 log.warning(
                     "LLM credits exhausted after %d successful calls. "
-                    "Switched to oracle baseline for remaining steps. "
+                    "Switched to greedy heuristic for remaining steps. "
                     "Regenerate your HF token or wait for monthly credit reset.",
                     llm_calls,
                 )
             else:
                 log.warning(
-                    "LLM disabled after repeated errors and switched to oracle "
-                    "baseline for remaining steps. Last error: %s",
+                    "LLM disabled after repeated errors and switched to greedy "
+                    "heuristic for remaining steps. Last error: %s",
                     llm_last_error,
                 )
 

@@ -1,14 +1,15 @@
 """Minimal WebSocket client example.
 
-Starts from a running server and executes the built-in oracle policy for one task.
-This mirrors the real OpenEnv client path rather than the direct benchmark path.
+Starts from a running server and executes the built-in greedy heuristic for one
+task. This mirrors the real OpenEnv client path rather than the direct oracle
+benchmark path.
 """
 from __future__ import annotations
 
 import argparse
 
 from client import CropEnvClient
-from agent.inference import oracle_action
+from agent.inference import greedy_action
 from models import CropAction
 
 
@@ -28,15 +29,13 @@ def _parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = _parse_args()
-    oracle_state = {}
-
     with CropEnvClient(base_url=args.base_url).sync() as env:
         result = env.reset(seed=args.seed, task_id=args.task_id)
         obs = result.observation
         steps = 0
 
         while not result.done:
-            action = CropAction(**oracle_action(obs, oracle_state))
+            action = CropAction(**greedy_action(obs, {}))
             result = env.step(action)
             obs = result.observation
             steps += 1

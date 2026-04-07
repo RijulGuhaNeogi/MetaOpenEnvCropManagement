@@ -211,20 +211,20 @@ The rubric is provided by `CropManagementRubric` (in `server/rubric.py`), a thin
 |------|-------|
 | 1 (Easy) | 0.9593 |
 | 2 (Medium) | 0.9409 |
-| 3 (Hard) | 0.8769 |
+| 3 (Hard) | 0.9067 |
 
-The oracle has perfect knowledge of the crop model and computes the theoretically optimal action at every step. It serves as the upper-bound reference trajectory.
+The oracle baseline is evaluated from the environment's exact internal state, not the public masked observation surface. That makes it the correct upper-bound reference trajectory for local baselines and regression tests.
 
 ### Greedy Heuristic Baseline
 
 | Task | Score |
 |------|-------|
-| 1 (Easy) | 0.7464 |
-| 2 (Medium) | 0.5515 |
-| 3 (Hard) | 0.3143 |
-| **Overall** | **0.5374** |
+| 1 (Easy) | 0.9588 |
+| 2 (Medium) | 0.5298 |
+| 3 (Hard) | 0.4224 |
+| **Overall** | **0.6370** |
 
-These scores are produced by the greedy heuristic, which uses deficit-based irrigation, WOFOST-calibrated fertilizer timing/amounts, and constants shared with the reward module. On Tier 2/3, the greedy heuristic falls back to midpoint estimates from growth stage labels and soil moisture bands — intentionally imprecise, which degrades fertilizer timing and irrigation precision. On Tasks 2/3, the greedy cannot time harvest precisely (growth stage "ripening" maps to DVS 1.75, below the 1.8 threshold), so it relies on auto-termination (which now fires 2 steps after DVS hits 2.0, with grain shattering degrading yield), which the grader penalizes. An LLM agent that strategically uses inspect actions, reasons over NL observations, and explicitly harvests in the maturity window can outperform the greedy baseline significantly on Tasks 2 and 3.
+These scores are produced by a fresh observation-limited greedy heuristic that sees only the same public fields the LLM sees through the prompt surface: exact tier-1 values, or masked bands plus advisory text plus inspection reports on tier-2/3. It does not use simulator internals, peak-yield estimates, or the oracle ceiling path. On the hidden tasks it acts only on harvest-window cues, fertilization-window hints, soil bands, weather summaries, and optional inspect results, so the oracle ceiling still retains a clear advantage on Tasks 2 and 3.
 
 A **wait-only (do-nothing) policy** scores 0.37 / 0.35 / 0.17 on Tasks 1/2/3 respectively — the grader's anti-passivity calibration ensures that agents must take meaningful actions to score well.
 
@@ -254,7 +254,7 @@ MetaHackathonPrep/
 │   └── wheat_punjab.yaml   # Punjab wheat WOFOST profile
 ├── server/
 │   ├── __init__.py         # Package marker
-│   ├── app.py              # FastAPI server via create_app() + /tasks, /grader, /baseline
+│   ├── app.py              # FastAPI server via create_app() + /tasks, /grader, /baseline, /ceiling
 │   ├── advisory.py         # Deterministic advisory text generator
 │   ├── constants.py        # Shared numeric thresholds and weights
 │   ├── crop_params.py      # WOFOST crop/soil parameter library + YAML loader
@@ -291,10 +291,10 @@ MetaHackathonPrep/
 The repo supports three primary workflows:
 
 - **Inference path** — run the full WebSocket client plus heuristic or LLM policy against a live server
-- **Direct benchmark path** — evaluate the built-in greedy policy directly against the environment without starting the server
+- **Direct benchmark path** — evaluate the oracle ceiling directly against the environment without starting the server
 - **Test path** — validate determinism, reward behavior, and policy regressions via the smoke suite
 
-Use the inference path when you want end-to-end OpenEnv behavior, the direct benchmark path when you want fast reproducible comparisons, and the test path when you want regression protection.
+Use the inference path when you want end-to-end OpenEnv behavior with greedy or LLM decisions, the direct benchmark path when you want fast oracle-ceiling comparisons, and the test path when you want regression protection.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full architecture documentation, data flow diagrams, and layer model.
 
@@ -329,7 +329,10 @@ curl http://localhost:8000/tasks
 # {"tasks": [{"id": 1, "name": "Basic Crop Growth", ...}, ...]}
 
 curl http://localhost:8000/baseline
-# Deterministic oracle scores for all 3 tasks (cached, seed=42)
+# Deterministic greedy baseline scores for all 3 tasks (cached, seed=42)
+
+curl http://localhost:8000/ceiling
+# Deterministic oracle ceiling scores for all 3 tasks (cached, seed=42)
 
 curl -X POST http://localhost:8000/grader -H 'Content-Type: application/json' \
   -d '{"actual_yield": 5000, "target_yield": 8000, "total_water": 10, "total_n": 60, "total_cost": 100, "budget": 800, "harvest_dvs": 1.9, "harvested": true, "actions_taken": [], "task_id": 1}'
@@ -484,6 +487,8 @@ python examples/direct_benchmark.py
 Use a single seed for quick local checks and regressions. Use a multi-seed sweep to judge policy stability and difficulty calibration.
 
 In the current benchmark, Task 1 is very stable, Task 2 has moderate scenario sensitivity, and Task 3 has the largest variance because weather and budget pressure interact more strongly there. That variance is expected; what matters is that difficulty ordering remains stable on aggregate.
+
+The direct benchmark uses the environment's perfect-information oracle reference. The `/baseline` endpoint exposes the observation-limited greedy baseline. If you call `oracle_action(obs, state)` directly on masked tier-2/3 observations, that path is a reconstruction heuristic rather than the true oracle ceiling.
 
 Current test coverage includes:
 

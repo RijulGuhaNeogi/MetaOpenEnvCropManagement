@@ -31,10 +31,9 @@ def _run_episode(task_id: int, seed: int = SEED) -> tuple[float, int]:
     obs = env.reset(seed=seed, task_id=task_id)
 
     steps = 0
-    oracle_state = {}
 
     while not obs.done:
-        action_dict = oracle_action(obs, oracle_state)
+        action_dict = env.oracle_reference_action()
         action = CropAction(**action_dict)
 
         obs = env.step(action)
@@ -50,7 +49,10 @@ def _run_policy_episode(task_id: int, policy, seed: int = SEED) -> tuple[float, 
 
     oracle_state = {}
     while not obs.done:
-        action_dict = policy(obs, oracle_state)
+        if policy is oracle_action:
+            action_dict = env.oracle_reference_action()
+        else:
+            action_dict = policy(obs, oracle_state)
         obs = env.step(CropAction(**action_dict))
 
     return obs.reward or 0.0, obs.metadata.get("rubric_breakdown", {})
@@ -868,15 +870,34 @@ def test_baseline_scores_stable():
     If this test breaks, either the grading formula, reward shaping,
     crop parameters, or oracle baseline changed — update README/ARCHITECTURE.
     """
-    expected = {1: 0.9593, 2: 0.9409, 3: 0.8769}
+    expected = {1: 0.9593, 2: 0.9409, 3: 0.9067}
     for task_id, expected_score in expected.items():
         env = CropEnvironment()
         obs = env.reset(seed=SEED, task_id=task_id)
-        oracle_state: dict = {}
         while not obs.done:
-            obs = env.step(CropAction(**oracle_action(obs, oracle_state)))
+            obs = env.step(CropAction(**env.oracle_reference_action()))
         assert obs.reward == pytest.approx(expected_score, abs=0.001), (
             f"Task {task_id}: expected {expected_score}, got {obs.reward}"
+        )
+
+
+def test_oracle_reference_harvests_inside_window_on_outlier_seeds():
+    """Perfect-information oracle should not explicitly harvest below DVS 1.80."""
+    cases = ((2, 51), (3, 46), (3, 48))
+
+    for task_id, seed in cases:
+        env = CropEnvironment()
+        obs = env.reset(seed=seed, task_id=task_id)
+
+        while not obs.done:
+            action_dict = env.oracle_reference_action()
+            obs = env.step(CropAction(**action_dict))
+
+        breakdown = obs.metadata.get("rubric_breakdown", {})
+        assert breakdown.get("explicit_harvest") is True
+        assert breakdown.get("harvest_dvs", 0.0) >= 1.8, (
+            f"Task {task_id}, seed {seed}: harvested too early at DVS "
+            f"{breakdown.get('harvest_dvs')}"
         )
 
 

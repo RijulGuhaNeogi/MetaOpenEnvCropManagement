@@ -66,7 +66,8 @@ class CropEnvironment(
         self._scenario: dict[str, Any] = {}
         self._state = CropState()
         self._rubric = CropManagementRubric()
-        self._oracle_state: dict[str, Any] = {}
+        self._oracle_metadata_state: dict[str, Any] = {}
+        self._oracle_policy_state: dict[str, Any] = {}
 
     # ------------------------------------------------------------------
     # OpenEnv interface
@@ -89,7 +90,8 @@ class CropEnvironment(
             else generate_scenario(actual_seed, task_id)
         )
         self._scenario = scenario
-        self._oracle_state = {}
+        self._oracle_metadata_state = {}
+        self._oracle_policy_state = {}
 
         # Create simulator
         self._sim = CropSimulator(
@@ -516,7 +518,7 @@ class CropEnvironment(
             )
 
         # Compute oracle reference action (for metadata — not visible to LLM)
-        oracle_dict = self._compute_oracle_action(task)
+        oracle_dict = self._compute_oracle_action(task, self._oracle_metadata_state)
         if oracle_dict:
             step_metadata["oracle_action"] = oracle_dict
 
@@ -534,11 +536,28 @@ class CropEnvironment(
     def state(self) -> CropState:
         return self._state.model_copy(deep=True)
 
+    def oracle_reference_action(self) -> dict[str, Any]:
+        """Return the perfect-information oracle action for the current step.
+
+        Unlike a policy operating on the public observation surface, this
+        method evaluates the oracle on an internal tier-1 snapshot built from
+        the simulator's exact state. It is the correct upper-bound reference
+        for local baselines, tests, and diagnostics.
+        """
+        if self._sim is None or self._state.current_task_id is None:
+            raise RuntimeError("Environment has not been reset.")
+
+        task = get_task_definition(self._state.current_task_id)
+        action_dict = self._compute_oracle_action(task, self._oracle_policy_state)
+        if action_dict is None:
+            raise RuntimeError("Failed to compute oracle reference action.")
+        return action_dict
+
     # ------------------------------------------------------------------
     # Oracle reference (for metadata — not shown to LLM)
     # ------------------------------------------------------------------
 
-    def _compute_oracle_action(self, task: dict) -> dict[str, Any] | None:
+    def _compute_oracle_action(self, task: dict, oracle_state: dict[str, Any]) -> dict[str, Any] | None:
         """Call oracle_action on a tier-1 observation snapshot.
 
         Returns the oracle's recommended action dict, or None on error.
@@ -547,9 +566,11 @@ class CropEnvironment(
         """
         try:
             oracle_fn = _get_oracle_action()
-            # Build a minimal tier-1 observation for the oracle
-            tier1_obs = self._build_observation(task, done=False)
-            action_dict = oracle_fn(tier1_obs, self._oracle_state)
+            tier1_task = dict(task)
+            tier1_task["observability_tier"] = 1
+            tier1_task["hidden_fields"] = []
+            tier1_obs = self._build_observation(tier1_task, done=False)
+            action_dict = oracle_fn(tier1_obs, oracle_state)
             return {
                 "action_type": action_dict.get("action_type", "wait"),
                 "amount": round(action_dict.get("amount", 0.0), 1),
