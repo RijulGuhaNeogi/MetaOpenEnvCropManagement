@@ -80,7 +80,6 @@ def generate_advisory(
     location: str,
     tier: int = 1,
     fert_count: int = 0,
-    inspects_remaining: int = 2,
     has_crop_report: bool = False,
 ) -> str:
     """Generate a neutral advisory paragraph from current field state.
@@ -143,20 +142,28 @@ def generate_advisory(
         if tier == 1:
             # T1: agent can see exact n_avail, give dose guidance
             if n_availability < 0.5:
-                parts.append("Nitrogen is deficient — a larger application is recommended.")
+                parts.append("Nitrogen is very low — a large application (~50kg) is recommended.")
+            elif n_availability < 0.65:
+                parts.append("Nitrogen is low — a substantial application (~45kg) is recommended.")
             elif n_availability < 0.8:
-                parts.append("Nitrogen is moderate — fertilization needed.")
+                parts.append("Nitrogen is moderate — fertilization needed (~30kg).")
+            elif n_availability < 0.9:
+                parts.append("Nitrogen is adequate — a small application (~15kg) may suffice.")
             else:
-                parts.append("Nitrogen is adequate — a small application may suffice.")
+                parts.append("Nitrogen is surplus — no fertilization needed.")
         else:
-            # T2/T3: factual N status only, no dose numbers
+            # T2/T3: factual N status only
             if n_availability < 0.5:
-                parts.append("Nitrogen is deficient.")
+                parts.append("Nitrogen is very low.")
+            elif n_availability < 0.65:
+                parts.append("Nitrogen is low.")
             elif n_availability < 0.8:
                 parts.append("Nitrogen is moderate.")
-            else:
+            elif n_availability < 0.9:
                 parts.append("Nitrogen is adequate.")
-        if tier >= 2 and fert_count == 0 and inspects_remaining > 0:
+            else:
+                parts.append("Nitrogen is surplus.")
+        if tier >= 2 and fert_count == 0 and budget_remaining >= 10:
             parts.append("Consider inspect_soil ($10) to check exact nitrogen level.")
     elif 0.50 <= dvs <= 0.70:
         if tier == 1:
@@ -172,18 +179,26 @@ def generate_advisory(
             parts.append("Late in window — fertilize soon before it closes.")
         if tier == 1:
             if n_availability < 0.5:
-                parts.append("Nitrogen is deficient — fertilization needed.")
+                parts.append("Nitrogen is very low — fertilization needed (~50kg).")
+            elif n_availability < 0.65:
+                parts.append("Nitrogen is low — a substantial application (~45kg) is recommended.")
             elif n_availability < 0.8:
-                parts.append("Nitrogen is moderate — fertilization needed.")
+                parts.append("Nitrogen is moderate — fertilization needed (~30kg).")
+            elif n_availability < 0.9:
+                parts.append("Nitrogen is adequate — a small application (~15kg) may suffice.")
             else:
-                parts.append("Nitrogen is adequate — a small application may suffice.")
+                parts.append("Nitrogen is surplus — no fertilization needed.")
         else:
             if n_availability < 0.5:
-                parts.append("Nitrogen is deficient.")
+                parts.append("Nitrogen is very low.")
+            elif n_availability < 0.65:
+                parts.append("Nitrogen is low.")
             elif n_availability < 0.8:
                 parts.append("Nitrogen is moderate.")
-            else:
+            elif n_availability < 0.9:
                 parts.append("Nitrogen is adequate.")
+            else:
+                parts.append("Nitrogen is surplus.")
     elif 0.15 <= dvs < 0.20:
         parts.append("First fertilization window approaching soon.")
     elif 0.42 <= dvs < 0.50:
@@ -225,10 +240,10 @@ def generate_advisory(
         if tier >= 2:
             if has_crop_report:
                 alerts.append("Ripening phase — check your CROP REPORT for exact DVS. Harvest only when DVS >= 1.80.")
-            elif inspects_remaining > 0:
+            elif budget_remaining >= 20:
                 alerts.append("Ripening phase — DVS hidden. Use inspect_crop ($20) to confirm DVS before harvesting. Harvest only when DVS >= 1.80.")
             else:
-                alerts.append("Ripening phase — DVS hidden, no inspects remaining. Harvest when advisory says 'harvest window' is open.")
+                alerts.append("Ripening phase — DVS hidden, budget too low for inspect. Harvest when advisory says 'harvest window' is open.")
         else:
             alerts.append("Ripening phase — NOT yet in harvest window. Wait for DVS >= 1.80 before harvesting.")
 

@@ -1,7 +1,7 @@
 # Architecture — Precision Agriculture Crop Management
 
 > **Last updated:** April 2026
-> **Version:** 2.1 — Updated folder structure, endpoint listing, test coverage, harvest DVS window
+> **Version:** 2.3 — Environment fairness overhaul: 5-band nitrogen, budget-only inspect gating, dose quality feedback, SYSTEM_PROMPT alignment with oracle
 
 ---
 
@@ -67,8 +67,8 @@ The codebase is organized into **four logical layers**, each with a clear respon
 | Class | Base | Key Fields | Purpose |
 |-------|------|-----------|---------|
 | `CropAction` | `Action` | `action_type` (str), `amount` (float) | Agent's weekly decision |
-| `CropObservation` | `Observation` | 12 nested dicts: crop/soil/weather/resources/control_features/conflicts + task context | Rich observation for LLM or RL |
-| `CropState` | `State` | Full simulator state + episode tracking | Serializable checkpoint |
+| `CropObservation` | `Observation` | 12 nested dicts: crop/soil/weather/resources/control_features/conflicts + task context + `dose_hint` | Rich observation for LLM or RL |
+| `CropState` | `State` | Full simulator state + episode tracking + `last_soil_report`, `last_crop_report` | Serializable checkpoint |
 
 All models use Pydantic `BaseModel` with `extra="forbid"` and inherit from OpenEnv base types.
 
@@ -87,11 +87,13 @@ All models use Pydantic `BaseModel` with `extra="forbid"` and inherit from OpenE
 | Method | Responsibility |
 |--------|---------------|
 | `reset(seed, task_id)` | Load scenario → create `CropSimulator` → apply probe overrides → return initial observation |
-| `step(action)` | Validate action → compute intent reward → advance sim 7 days → compute delta reward → check termination → return observation |
+| `step(action)` | Validate action → if inspect: deduct budget, store report, return early (no sim advance) → else: compute intent reward → advance sim 7 days → compute delta reward → check termination → return observation |
 | `state` (property) | Return serializable `CropState` |
 
+**Inspect actions** are handled as **free sub-actions**: they deduct budget and store their report in `CropState` (`last_soil_report` / `last_crop_report`), but do **not** advance the simulation, increment the step counter, or consume a week. Budget is the only constraint on inspects (no artificial cap). Reports persist in all subsequent observations.
+
 **Termination conditions** (checked in order):
-1. Agent sends `harvest` action → terminal, compute final grade
+1. Agent sends `harvest` action → terminal, compute final grade with blended reward (0.7 × trajectory + 0.3 × normalized harvest step signal)
 2. DVS ≥ 2.0 → auto-harvest maturity
 3. Day ≥ max_duration → forced season end
 4. Step ≥ MAX_STEPS (60) → safety cap
@@ -134,7 +136,7 @@ YAML override: `load_profile_from_yaml(path)` loads custom profiles from `config
 
 ### 3.4b Advisory Text — `server/advisory.py`
 
-Deterministic template-based advisory generator. `generate_advisory()` produces factual, neutral text describing current crop state, stress conditions, and resource usage — never prescribing actions. Included in `CropObservation.advisory_text`.
+Deterministic template-based advisory generator. `generate_advisory()` takes `has_crop_report` and `budget_remaining` parameters to gate inspect recommendations and produces factual, neutral text describing current crop state, stress conditions, and resource usage — never prescribing actions. Uses 5-band nitrogen status (very_low/low/moderate/adequate/surplus) aligned with the oracle dose formula. Covers all DVS ranges including the DVS 1.50–1.70 gap ("NOT yet in harvest window") for all tiers. Included in `CropObservation.advisory_text`.
 
 ### 3.5 Scenario Generation — `server/scenarios.py`
 
@@ -195,9 +197,11 @@ Three-tier reward architecture:
 |------|----------|-------|------|
 | **Intent** | `compute_step_reward()` | [−0.3, +0.2] | Before advancing sim |
 | **Delta** | `compute_delta_reward()` | [−0.15, +0.15] | After advancing sim |
-| **Trajectory** | `compute_trajectory_reward()` | [0.0, 1.0] | At episode end (= final grade) |
+| **Trajectory** | `compute_trajectory_reward()` | [0.0, 1.0] | At episode end (= final grade, blended with harvest step signal) |
 
 Step reward blend: `0.4 × intent + 0.6 × delta`
+
+Terminal reward blend: `0.7 × trajectory_reward + 0.3 × normalized_harvest_step_signal` — gives immediate credit for good harvest timing at the terminal step.
 
 ### 3.9 Client — `client.py`
 
@@ -252,9 +256,9 @@ prevent reaching 1.0:
 
 | Task | Score | Timing | Yield | Cost |
 |------|-------|--------|-------|------|
-| 1 (NL, tier 1) | 0.9418 | 0.975 | 0.951 | 0.847 |
-| 2 (Iowa, tier 2) | 0.9156 | 0.952 | 0.949 | 0.728 |
-| 3 (Punjab, tier 3) | 0.8241 | 0.903 | 0.900 | 0.511 |
+| 1 (NL, tier 1) | 0.9593 | 0.975 | 0.951 | 0.847 |
+| 2 (Iowa, tier 2) | 0.9409 | 0.952 | 0.949 | 0.728 |
+| 3 (Punjab, tier 3) | 0.8769 | 0.903 | 0.900 | 0.511 |
 
 ### 3.11 Step Reward Alignment with Oracle
 
@@ -316,6 +320,11 @@ Agent sends CropAction(action_type='irrigate', amount=2.5)
 CropEnvironment.step(action)
   ├── Validate action (type, amount, budget)
   │     └── Degrade invalid/over-budget → wait
+  ├── If inspect_soil / inspect_crop:
+  │     ├── Check budget >= inspect cost
+  │     ├── Deduct budget
+  │     ├── Store report in CropState (persists)
+  │     └── Return observation immediately (no sim advance)
   ├── compute_step_reward(action, state)  ← Intent reward BEFORE
   │     reward.py
   ├── sim.advance(7, irrigation_cm, n_kg_ha)  ← crop_sim.py
@@ -328,7 +337,7 @@ CropEnvironment.step(action)
   │     reward.py
   ├── step_reward = 0.4 × intent + 0.6 × delta
   ├── Check termination:
-  │     ├── harvest action → grade_episode() → terminal
+  │     ├── harvest action → grade_episode() → blend 0.7×traj + 0.3×harvest_signal → terminal
   │     ├── DVS ≥ 2.0 → auto-harvest → terminal
   │     ├── day ≥ max_duration → forced end → terminal
   │     └── step ≥ MAX_STEPS → safety cap → terminal
@@ -354,7 +363,7 @@ grade_episode()  ← grader.py
   compute_trajectory_reward(grade)  ← reward.py
          │
          ▼
-  Observation.reward = trajectory_reward (overrides step reward)
+  Observation.reward = blended_reward (0.7 × trajectory + 0.3 × harvest_signal)
   Observation.done = True
   Observation.metadata = {rubric_breakdown: {...}}
 ```
@@ -411,7 +420,7 @@ MetaHackathonPrep/
 │   └── client_greedy_run.py       # WebSocket client example
 │
 ├── tests/                         # Test suite
-│   ├── test_smoke.py              # Smoke + RL + rubric/weather tests (54 tests)
+│   ├── test_smoke.py              # Smoke + RL + rubric/weather tests (64 tests)
 │   ├── test_integration.py        # HTTP endpoint integration tests (7 tests)
 │   ├── test_submission_surface.py # Competition format compliance tests (6 tests)
 │   └── test_ws_episode.py         # Real WebSocket transport tests (3 tests)
@@ -541,12 +550,12 @@ models.py ← (no internal deps)
 
 ### Key Metrics (Current Baseline)
 
-| Task | Greedy Score (seed=42) |
-|------|----------------------|
-| 1 (Easy) | 0.7464 |
-| 2 (Medium) | 0.5515 |
-| 3 (Hard) | 0.3143 |
-| **Overall** | **0.5374** |
+| Task | Greedy Score (seed=42) | Oracle Score (seed=42) |
+|------|----------------------|----------------------|
+| 1 (Easy) | 0.7464 | 0.9593 |
+| 2 (Medium) | 0.5515 | 0.9409 |
+| 3 (Hard) | 0.3143 | 0.8769 |
+| **Overall** | **0.5374** | **0.9257** |
 
 ---
 

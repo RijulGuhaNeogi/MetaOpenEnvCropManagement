@@ -128,12 +128,12 @@ class CropObservation(Observation):
     dvs_hidden: bool = False          # True when exact DVS is masked (-1.0)
     sm_hidden: bool = False           # True when exact SM is masked (-1.0)
     sm_band: Optional[str] = None     # "critical"/"low"/"adequate"/"high"
-    n_visual: Optional[str] = None    # "deficient"/"adequate"/"surplus"
+    n_visual: Optional[str] = None    # "very_low"/"low"/"moderate"/"adequate"/"surplus"
     lai_band: Optional[str] = None    # "sparse"/"moderate"/"dense"
     weather_summary: Optional[str] = None   # Deterministic NL weather (tier 2/3)
     soil_report: Optional[str] = None       # Filled only on inspect_soil
     crop_report: Optional[str] = None       # Filled only on inspect_crop
-    inspects_remaining: int = 2             # Inspects left (any mix soil/crop)
+    dose_hint: Optional[str] = None         # Dose quality feedback after fertilize
 
 
 # ---------------------------------------------------------------------------
@@ -174,6 +174,5 @@ class CropState(State):
     last_irrigation_day: Optional[int] = None
     last_fertilization_day: Optional[int] = None
     fertilizer_events_count: int = 0
-    inspects_remaining: int = 2           # Total inspects left (any mix soil/crop)
     last_soil_report: Optional[str] = None  # Persisted across steps
     last_crop_report: Optional[str] = None  # Persisted across steps

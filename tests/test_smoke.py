@@ -936,7 +936,7 @@ def test_tier2_hidden_fields():
     assert obs.sm_hidden is True
     # Bands must be populated
     assert obs.sm_band in ("critical", "low", "adequate", "high")
-    assert obs.n_visual in ("deficient", "adequate", "surplus")
+    assert obs.n_visual in ("very_low", "low", "moderate", "adequate", "surplus")
     assert obs.lai_band in ("sparse", "moderate", "dense")
     # Weather forecast should be empty, summary should be NL
     assert obs.weather_forecast == []
@@ -1046,3 +1046,47 @@ def test_tier1_unchanged_after_upgrade():
         obs = env.step(CropAction(**oracle_action(obs, oracle_state)))
         steps += 1
     assert obs.reward == pytest.approx(0.9593, abs=0.001)
+
+
+def test_inspect_no_cap_budget_only():
+    """Inspects should be limited only by budget, not by an artificial cap."""
+    env = CropEnvironment()
+    obs = env.reset(seed=SEED, task_id=1)  # $800 budget — plenty for many inspects
+    # Do 3 inspects — would have failed with 2-cap
+    for _ in range(3):
+        obs = env.step(CropAction(action_type="inspect_soil", amount=0.0))
+        assert obs.soil_report is not None
+        assert not any("cap" in c.lower() for c in obs.conflicts)
+    # 3 × $10 = $30 deducted
+    assert obs.resources_used.budget_remaining == pytest.approx(800.0 - 30.0, abs=0.1)
+
+
+def test_n_visual_5_bands():
+    """n_visual on tier 2/3 should report one of 5 nitrogen bands."""
+    env = CropEnvironment()
+    obs = env.reset(seed=SEED, task_id=2)
+    valid_bands = {"very_low", "low", "moderate", "adequate", "surplus"}
+    assert obs.n_visual in valid_bands, f"Got {obs.n_visual}, expected one of {valid_bands}"
+
+
+def test_dose_hint_after_fertilize():
+    """A fertilize action should produce a dose_hint on the next observation."""
+    env = CropEnvironment()
+    obs = env.reset(seed=SEED, task_id=1)
+    # Advance to fert window
+    while obs.crop_status.dvs < 0.25 and not obs.done:
+        obs = env.step(CropAction(action_type="wait"))
+    if obs.done:
+        return
+    # Fertilize
+    obs = env.step(CropAction(action_type="fertilize", amount=30.0))
+    assert obs.dose_hint is not None
+    assert any(word in obs.dose_hint for word in ["underdosed", "good dose", "overdosed"])
+
+
+def test_dose_hint_none_on_non_fertilize():
+    """dose_hint should be None on wait/irrigate actions."""
+    env = CropEnvironment()
+    obs = env.reset(seed=SEED, task_id=1)
+    obs = env.step(CropAction(action_type="wait"))
+    assert obs.dose_hint is None

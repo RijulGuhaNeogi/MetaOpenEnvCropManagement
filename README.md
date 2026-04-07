@@ -70,7 +70,7 @@ The WOFOST-inspired crop growth simulator captures real agricultural dynamics: t
 - Punjab has minimal rainfall during the wheat season — irrigation is essential but expensive
 - Budget is tight ($300) — every irrigation/fertilization decision must be justified
 - Most precise sensor readings are hidden — the agent sees coarsened bands and bucketed weather
-- Two inspect actions (`inspect_soil` at $10, `inspect_crop` at $20) reveal exact values but cost budget and a week of growing time
+- Two inspect actions (`inspect_soil` at $10, `inspect_crop` at $20) reveal exact values but cost budget; results persist across the episode
 - Scoring weights yield (35%), water efficiency (20%), cost efficiency (18%), timing (15%), and harvest timing (12%) — no single strategy dominates
 - An LLM agent that strategically inspects and reasons over NL observations can outperform the greedy heuristic, which operates blindly on midpoint estimates
 
@@ -90,7 +90,7 @@ The WOFOST-inspired crop growth simulator captures real agricultural dynamics: t
 | `action_type` | str | `irrigate`, `fertilize`, `harvest`, `wait`, `inspect_soil`, `inspect_crop` | Weekly management decision |
 | `amount` | float | 0-10 cm (irrigate), 0-50 kg N/ha (fertilize), 0 (others) | Resource amount |
 
-**Inspect actions** (new): `inspect_soil` ($10) reveals exact soil moisture, nitrogen, and water stress. `inspect_crop` ($20) reveals exact DVS, LAI, biomass, and grain weight. Both cost budget and one week of simulation time. Available on all tiers, but most valuable on Tier 2/3 where numeric readings are hidden.
+**Inspect actions:** `inspect_soil` ($10) reveals exact soil moisture, nitrogen, and water stress. `inspect_crop` ($20) reveals exact DVS, LAI, biomass, and grain weight. Inspects are **free sub-actions** — they cost budget but do **not** advance the simulation or consume a week. The agent gets results immediately and can take a real action on the next call within the same logical step. Budget is the only constraint on inspects (no artificial cap). Results **persist** in all subsequent observations as `soil_report` / `crop_report`. Available on all tiers, but most valuable on Tier 2/3 where numeric readings are hidden.
 
 ---
 
@@ -111,11 +111,12 @@ The WOFOST-inspired crop growth simulator captures real agricultural dynamics: t
 | `conflicts` | list[str] | Feedback on invalid actions |
 | `observability_tier` | int | 1=full numeric, 2=mixed bands+NL, 3=NL-heavy |
 | `sm_band` | str \| None | Coarsened soil moisture band (tier 2/3): critical/low/adequate/high |
-| `n_visual` | str \| None | Coarsened nitrogen band (tier 2/3): deficient/adequate/surplus |
+| `n_visual` | str \| None | Coarsened nitrogen band (tier 2/3): very_low/low/moderate/adequate/surplus |
 | `lai_band` | str \| None | Coarsened canopy band (tier 2/3): sparse/moderate/dense |
 | `weather_summary` | str \| None | NL weather forecast (tier 2: exact per-day, tier 3: bucketed) |
-| `soil_report` | str \| None | Exact soil readings (only after inspect_soil) |
-| `crop_report` | str \| None | Exact crop readings (only after inspect_crop) |
+| `soil_report` | str \| None | Exact soil readings (persists after inspect_soil) |
+| `crop_report` | str \| None | Exact crop readings (persists after inspect_crop) |
+| `dose_hint` | str \| None | Dose quality feedback after fertilize actions |
 
 All typed sub-models (`CropStatus`, `SoilStatus`, `ResourcesUsed`, `ControlFeatures`) are Pydantic models with explicit field types, providing IDE autocomplete and serialization safety.
 
@@ -163,6 +164,7 @@ Dense per-step signals are split into:
 
 - **Intent reward:** evaluates whether the action is agronomically sensible before transition
 - **Delta reward:** evaluates whether the action actually relieved stress or wasted resources after transition
+- **Terminal harvest blending:** at episode end, the reward is `0.7 × trajectory_reward + 0.3 × normalized_harvest_step_signal`, giving immediate feedback on harvest timing quality
 
 This reward breakdown is exposed in observation metadata for diagnostics and offline RL.
 
@@ -197,7 +199,19 @@ The rubric is provided by `CropManagementRubric` (in `server/rubric.py`), a thin
 
 ---
 
-## Baseline Scores (Greedy Heuristic, seed=42)
+## Baseline Scores (seed=42)
+
+### Oracle (Perfect-Information) Baseline
+
+| Task | Score |
+|------|-------|
+| 1 (Easy) | 0.9593 |
+| 2 (Medium) | 0.9409 |
+| 3 (Hard) | 0.8769 |
+
+The oracle has perfect knowledge of the crop model and computes the theoretically optimal action at every step. It serves as the upper-bound reference trajectory.
+
+### Greedy Heuristic Baseline
 
 | Task | Score |
 |------|-------|
@@ -248,7 +262,7 @@ MetaHackathonPrep/
 │   ├── scenarios.py        # Seeded weather + scenario generator (3 locations)
 │   └── tasks.py            # Task definitions (3 difficulty levels)
 ├── tests/
-│   ├── test_smoke.py       # Smoke + RL + rubric tests (54 tests)
+│   ├── test_smoke.py       # Smoke + RL + rubric tests (64 tests)
 │   ├── test_integration.py # HTTP endpoint integration tests (7 tests)
 │   ├── test_submission_surface.py  # Competition format compliance tests (6 tests)
 │   └── test_ws_episode.py  # WebSocket full-episode tests (3 tests)
@@ -483,7 +497,7 @@ Current test coverage includes:
 - passive-policy and extra-fertilizer regression checks
 - late-harvest boundary regression checks
 
-The full test suite has **70 passing tests** (54 smoke/rubric/weather + 7 HTTP integration + 6 submission surface + 3 real WebSocket transport).
+The full test suite has **79 passing tests** (64 smoke/rubric/weather + 7 HTTP integration + 5 submission surface + 3 real WebSocket transport).
 
 ## Limitations
 

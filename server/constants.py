@@ -65,7 +65,6 @@ REWARD_DELTA_WEIGHT = 0.6          # Weight for observed-state-change reward
 # ---------------------------------------------------------------------------
 INSPECT_SOIL_COST = 10             # Budget cost for inspect_soil action
 INSPECT_CROP_COST = 20             # Budget cost for inspect_crop action
-INSPECT_MAX_TOTAL = 2              # Max total inspects per episode (any mix)
 
 # ---------------------------------------------------------------------------
 # Observability band thresholds
@@ -75,8 +74,13 @@ SM_BAND_CRITICAL = 0.18            # SM below this = "critical"
 SM_BAND_LOW = 0.22                 # SM below this = "low"
 SM_BAND_ADEQUATE = 0.35            # SM below this = "adequate", above = "high"
 
-N_VISUAL_DEFICIENT = 0.4           # n_factor below this = "deficient"
-N_VISUAL_ADEQUATE = 0.7            # n_factor below this = "adequate", above = "surplus"
+# 5-band nitrogen visual thresholds (aligned with oracle dose formula)
+# dose = min(50, (1.0 - n_factor) / 0.008)
+# very_low → 50kg, low → 44-50kg, moderate → 25-44kg, adequate → 12-25kg, surplus → skip
+N_VISUAL_VERY_LOW = 0.50           # n_factor below this = "very_low"
+N_VISUAL_LOW = 0.65                # n_factor below this = "low"
+N_VISUAL_MODERATE = 0.80           # n_factor below this = "moderate"
+N_VISUAL_ADEQUATE = 0.90           # n_factor below this = "adequate", above = "surplus"
 
 LAI_LOW = 1.5                      # LAI below this = "sparse"
 LAI_MODERATE = 3.5                 # LAI below this = "moderate", above = "dense"

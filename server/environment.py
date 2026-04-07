@@ -26,9 +26,9 @@ from models import ControlFeatures, CropStatus, ResourcesUsed, SoilStatus, Weath
 from server.advisory import generate_advisory, generate_soil_report, generate_crop_report, weather_to_nl
 from server.constants import (
     MAX_STEPS, REWARD_DELTA_WEIGHT, REWARD_INTENT_WEIGHT,
-    INSPECT_SOIL_COST, INSPECT_CROP_COST, INSPECT_MAX_TOTAL,
+    INSPECT_SOIL_COST, INSPECT_CROP_COST,
     SM_BAND_CRITICAL, SM_BAND_LOW, SM_BAND_ADEQUATE,
-    N_VISUAL_DEFICIENT, N_VISUAL_ADEQUATE,
+    N_VISUAL_VERY_LOW, N_VISUAL_LOW, N_VISUAL_MODERATE, N_VISUAL_ADEQUATE,
     LAI_LOW, LAI_MODERATE,
 )
 from server.crop_sim import CropSimulator
@@ -123,7 +123,6 @@ class CropEnvironment(
             last_irrigation_day=None,
             last_fertilization_day=None,
             fertilizer_events_count=0,
-            inspects_remaining=INSPECT_MAX_TOTAL,
             last_soil_report=None,
             last_crop_report=None,
         )
@@ -172,13 +171,7 @@ class CropEnvironment(
             inspect_cost = INSPECT_SOIL_COST if action_type == "inspect_soil" else INSPECT_CROP_COST
             budget_remaining_now = self._state.budget - self._state.total_cost
 
-            if self._state.inspects_remaining <= 0:
-                conflicts.append(
-                    f"No inspects remaining (cap={INSPECT_MAX_TOTAL}). "
-                    "Treating as wait."
-                )
-                # Fall through to normal wait handling below
-            elif inspect_cost > budget_remaining_now:
+            if inspect_cost > budget_remaining_now:
                 conflicts.append(
                     f"Cannot afford {action_type} (${inspect_cost}) with "
                     f"${budget_remaining_now:.1f} remaining. Treating as wait."
@@ -186,7 +179,6 @@ class CropEnvironment(
             else:
                 # Valid inspect — charge budget, persist report, return immediately
                 self._state.total_cost += inspect_cost
-                self._state.inspects_remaining -= 1
 
                 # Record the inspect action
                 action_record = {
@@ -423,6 +415,21 @@ class CropEnvironment(
         # Blend: agronomic intent + observed state change.
         # Validated against harvest_hesitation and drought_rescue probes.
         step_reward = REWARD_INTENT_WEIGHT * intent_reward + REWARD_DELTA_WEIGHT * delta_reward
+
+        # Dose quality feedback for fertilize actions
+        dose_hint: str | None = None
+        if action_type == "fertilize" and n_kg > 0:
+            n_recov = scenario["crop_params"].N_RECOV
+            ideal = min(50.0, max(0.0, 1.0 - pre_n_availability) / max(n_recov, 0.001))
+            if ideal > 1.0:
+                ratio = n_kg / ideal
+                if ratio > 1.2:
+                    dose_hint = f"overdosed — applied {n_kg:.0f}kg vs ~{ideal:.0f}kg ideal"
+                elif ratio >= 0.8:
+                    dose_hint = f"good dose — close to the ~{ideal:.0f}kg ideal"
+                else:
+                    dose_hint = f"underdosed — applied {n_kg:.0f}kg vs ~{ideal:.0f}kg ideal"
+
         step_metadata = self._step_metadata(
             intent_reward=intent_reward,
             delta_reward=delta_reward,
@@ -477,6 +484,7 @@ class CropEnvironment(
                     "rubric_breakdown": breakdown,
                 },
                 inspect_performed=inspect_performed,
+                dose_hint=dose_hint,
             )
 
         # Compute oracle reference action (for metadata — not visible to LLM)
@@ -491,6 +499,7 @@ class CropEnvironment(
             conflicts=conflicts,
             metadata=step_metadata,
             inspect_performed=inspect_performed,
+            dose_hint=dose_hint,
         )
 
     @property
@@ -594,6 +603,7 @@ class CropEnvironment(
         conflicts: list[str] | None = None,
         metadata: dict[str, Any] | None = None,
         inspect_performed: str | None = None,
+        dose_hint: str | None = None,
     ) -> CropObservation:
         sim = self._sim
         scenario = self._scenario
@@ -737,10 +747,9 @@ class CropEnvironment(
                 budget_total=scenario["budget"],
                 location=scenario["location"],
                 fert_count=self._state.fertilizer_events_count,
-                inspects_remaining=self._state.inspects_remaining,
                 has_crop_report=self._state.last_crop_report is not None,
             ),
-            inspects_remaining=self._state.inspects_remaining,
+            dose_hint=dose_hint,
         )
 
         # ---------------------------------------------------------------
@@ -765,8 +774,12 @@ class CropEnvironment(
             else:
                 obs.sm_band = "high"
 
-            if exact_n < N_VISUAL_DEFICIENT:
-                obs.n_visual = "deficient"
+            if exact_n < N_VISUAL_VERY_LOW:
+                obs.n_visual = "very_low"
+            elif exact_n < N_VISUAL_LOW:
+                obs.n_visual = "low"
+            elif exact_n < N_VISUAL_MODERATE:
+                obs.n_visual = "moderate"
             elif exact_n < N_VISUAL_ADEQUATE:
                 obs.n_visual = "adequate"
             else:
@@ -826,7 +839,6 @@ class CropEnvironment(
                 location=scenario["location"],
                 tier=tier,
                 fert_count=self._state.fertilizer_events_count,
-                inspects_remaining=self._state.inspects_remaining,
                 has_crop_report=self._state.last_crop_report is not None,
             )
 
