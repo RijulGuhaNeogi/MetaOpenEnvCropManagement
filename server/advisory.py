@@ -80,6 +80,8 @@ def generate_advisory(
     location: str,
     tier: int = 1,
     fert_count: int = 0,
+    inspects_remaining: int = 2,
+    has_crop_report: bool = False,
 ) -> str:
     """Generate a neutral advisory paragraph from current field state.
 
@@ -154,7 +156,7 @@ def generate_advisory(
                 parts.append("Nitrogen is moderate.")
             else:
                 parts.append("Nitrogen is adequate.")
-        if tier >= 2 and fert_count == 0:
+        if tier >= 2 and fert_count == 0 and inspects_remaining > 0:
             parts.append("Consider inspect_soil ($10) to check exact nitrogen level.")
     elif 0.50 <= dvs <= 0.70:
         if tier == 1:
@@ -221,9 +223,14 @@ def generate_advisory(
         alerts.append("Crop has reached maturity — optimal harvest window (DVS 1.80-2.00) is open.")
     elif dvs >= 1.50:
         if tier >= 2:
-            alerts.append("Ripening phase — DVS hidden. Use inspect_crop ($20) to confirm DVS before harvesting. Harvest only when DVS >= 1.80.")
-        elif dvs >= 1.7:
-            alerts.append("Ripening phase — approaching harvest window at DVS 1.80.")
+            if has_crop_report:
+                alerts.append("Ripening phase — check your CROP REPORT for exact DVS. Harvest only when DVS >= 1.80.")
+            elif inspects_remaining > 0:
+                alerts.append("Ripening phase — DVS hidden. Use inspect_crop ($20) to confirm DVS before harvesting. Harvest only when DVS >= 1.80.")
+            else:
+                alerts.append("Ripening phase — DVS hidden, no inspects remaining. Harvest when advisory says 'harvest window' is open.")
+        else:
+            alerts.append("Ripening phase — NOT yet in harvest window. Wait for DVS >= 1.80 before harvesting.")
 
     # ── Assemble ──
     text = " ".join(parts)

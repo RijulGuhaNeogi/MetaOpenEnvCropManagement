@@ -133,6 +133,7 @@ class CropObservation(Observation):
     weather_summary: Optional[str] = None   # Deterministic NL weather (tier 2/3)
     soil_report: Optional[str] = None       # Filled only on inspect_soil
     crop_report: Optional[str] = None       # Filled only on inspect_crop
+    inspects_remaining: int = 2             # Inspects left (any mix soil/crop)
 
 
 # ---------------------------------------------------------------------------
@@ -173,3 +174,6 @@ class CropState(State):
     last_irrigation_day: Optional[int] = None
     last_fertilization_day: Optional[int] = None
     fertilizer_events_count: int = 0
+    inspects_remaining: int = 2           # Total inspects left (any mix soil/crop)
+    last_soil_report: Optional[str] = None  # Persisted across steps
+    last_crop_report: Optional[str] = None  # Persisted across steps

@@ -26,7 +26,7 @@ from models import ControlFeatures, CropStatus, ResourcesUsed, SoilStatus, Weath
 from server.advisory import generate_advisory, generate_soil_report, generate_crop_report, weather_to_nl
 from server.constants import (
     MAX_STEPS, REWARD_DELTA_WEIGHT, REWARD_INTENT_WEIGHT,
-    INSPECT_SOIL_COST, INSPECT_CROP_COST,
+    INSPECT_SOIL_COST, INSPECT_CROP_COST, INSPECT_MAX_TOTAL,
     SM_BAND_CRITICAL, SM_BAND_LOW, SM_BAND_ADEQUATE,
     N_VISUAL_DEFICIENT, N_VISUAL_ADEQUATE,
     LAI_LOW, LAI_MODERATE,
@@ -123,6 +123,9 @@ class CropEnvironment(
             last_irrigation_day=None,
             last_fertilization_day=None,
             fertilizer_events_count=0,
+            inspects_remaining=INSPECT_MAX_TOTAL,
+            last_soil_report=None,
+            last_crop_report=None,
         )
 
         return self._build_observation(task, metadata=self._step_metadata())
@@ -144,8 +147,6 @@ class CropEnvironment(
         conflicts: list[str] = []
         step_reward = 0.0
 
-        self._state.step_count += 1
-
         action_type = action.action_type.lower().strip()
         amount = action.amount
         if amount < 0:
@@ -164,30 +165,109 @@ class CropEnvironment(
             action_type = "wait"
             amount = 0.0
 
-        # Handle inspect actions — budget check + cost, then fall through as wait
-        inspect_performed: str | None = None
+        # Handle inspect actions — free sub-action: no sim advance, no step
+        # increment.  Charges budget, generates report (persisted), returns
+        # observation so the agent can take a real action next call.
         if action_type in ("inspect_soil", "inspect_crop"):
             inspect_cost = INSPECT_SOIL_COST if action_type == "inspect_soil" else INSPECT_CROP_COST
-            amount = 0.0
             budget_remaining_now = self._state.budget - self._state.total_cost
-            if inspect_cost > budget_remaining_now:
+
+            if self._state.inspects_remaining <= 0:
+                conflicts.append(
+                    f"No inspects remaining (cap={INSPECT_MAX_TOTAL}). "
+                    "Treating as wait."
+                )
+                # Fall through to normal wait handling below
+            elif inspect_cost > budget_remaining_now:
                 conflicts.append(
                     f"Cannot afford {action_type} (${inspect_cost}) with "
                     f"${budget_remaining_now:.1f} remaining. Treating as wait."
                 )
-                action_type = "wait"
             else:
-                inspect_performed = action_type
-                action_type = "wait"  # Sim advances like a wait
+                # Valid inspect — charge budget, persist report, return immediately
+                self._state.total_cost += inspect_cost
+                self._state.inspects_remaining -= 1
+
+                # Record the inspect action
+                action_record = {
+                    "step": self._state.step_count,  # same step number
+                    "action_type": action_type,
+                    "amount": 0.0,
+                    "dvs": round(self._sim.dvs, 3),
+                    "sm": round(self._sim.sm, 3),
+                    "cost": round(inspect_cost, 2),
+                }
+                self._state.actions_taken.append(action_record)
+
+                # Generate and persist report
+                if action_type == "inspect_soil":
+                    self._state.last_soil_report = generate_soil_report(
+                        sm=self._sim.sm,
+                        water_deficit=self._sim.sm < 0.22,
+                        field_capacity=scenario["soil_params"].field_capacity,
+                        wilting_point=scenario["soil_params"].wilting_point,
+                        n_availability=self._sim.n_factor,
+                        water_stress=self._sim._water_stress(),
+                    )
+                else:
+                    self._state.last_crop_report = generate_crop_report(
+                        dvs=self._sim.dvs,
+                        lai=self._sim.lai,
+                        tagp=self._sim.tagp,
+                        twso=self._sim.twso,
+                        growth_stage=self._sim.growth_stage_name(),
+                    )
+
+                # Compute intent reward for the inspect
+                forecast_rain_3d = sum(
+                    day["rain"]
+                    for day in self._sim.get_weather_forecast(self._sim.current_day + 1, n_days=3)
+                )
+                inspect_reward = compute_step_reward(
+                    action_type=action_type,
+                    dvs=self._sim.dvs,
+                    sm=self._sim.sm,
+                    amount=0.0,
+                    cost=inspect_cost,
+                    budget_remaining=budget_remaining_now,
+                    total_n=self._sim.total_n,
+                    total_water=self._sim.total_water,
+                    forecast_rain=forecast_rain_3d,
+                    root_zone_depth_cm=scenario["soil_params"].rooting_depth_mm / 10.0,
+                    water_stress=self._sim._water_stress(),
+                    n_availability=self._sim.n_factor,
+                    n_recov=scenario["crop_params"].N_RECOV,
+                    fert_events_count=self._state.fertilizer_events_count,
+                )
+
+                return self._build_observation(
+                    task, done=False, reward=inspect_reward,
+                    conflicts=conflicts,
+                    metadata=self._step_metadata(
+                        intent_reward=inspect_reward,
+                        delta_reward=0.0,
+                        step_reward=inspect_reward,
+                    ),
+                    inspect_performed=action_type,
+                )
+
+            # If we reach here, inspect was rejected — treat as normal wait
+            action_type = "wait"
+            amount = 0.0
+
+        # --- From here, action_type is irrigate / fertilize / harvest / wait ---
+        # (inspect actions returned early above)
+        inspect_performed: str | None = None  # Not an inspect at this point
+
+        # Increment step only for real actions (inspects don't count)
+        self._state.step_count += 1
 
         # Compute cost
         cost = 0.0
         irrig_cm = 0.0
         n_kg = 0.0
 
-        if inspect_performed:
-            cost = float(INSPECT_SOIL_COST if inspect_performed == "inspect_soil" else INSPECT_CROP_COST)
-        elif action_type == "irrigate":
+        if action_type == "irrigate":
             amount = min(amount, 10.0)  # Cap at 10 cm per step
             if amount <= 0:
                 conflicts.append("Irrigation amount must be > 0. Treating as wait.")
@@ -246,7 +326,7 @@ class CropEnvironment(
             self._state.explicit_harvest = True
             self._state.total_cost += cost
 
-            # Compute final grade (step_reward is not used for terminal steps)
+            # Compute final grade
             grade, breakdown = self._rubric.score_episode(
                 actual_yield=self._sim.twso,
                 target_yield=scenario["target_yield"],
@@ -260,7 +340,24 @@ class CropEnvironment(
                 task_id=self._state.current_task_id,
                 explicit_harvest=True,
             )
-            final_reward = compute_trajectory_reward(grade)
+            trajectory_reward = compute_trajectory_reward(grade)
+
+            # Dense harvest timing signal — blend into terminal reward so the
+            # agent gets immediate feedback on whether harvest timing was good.
+            harvest_step_signal = compute_step_reward(
+                action_type="harvest",
+                dvs=self._sim.dvs,
+                sm=self._sim.sm,
+                amount=0.0,
+                cost=0.0,
+                budget_remaining=self._state.budget - self._state.total_cost,
+                total_n=self._sim.total_n,
+                total_water=self._sim.total_water,
+            )
+            # Map step signal from [-0.30, +0.20] to [0, 1] for blending
+            normalized_harvest = (harvest_step_signal + 0.30) / 0.50
+            normalized_harvest = max(0.0, min(1.0, normalized_harvest))
+            final_reward = 0.7 * trajectory_reward + 0.3 * normalized_harvest
 
             self._sync_state()
             return self._build_observation(
@@ -275,14 +372,12 @@ class CropEnvironment(
             )
 
         # Compute intent reward before advancing
-        # Use original action type (including inspect) for reward shaping
-        reward_action_type = inspect_performed if inspect_performed else action_type
         forecast_rain_3d = sum(
             day["rain"]
             for day in self._sim.get_weather_forecast(self._sim.current_day + 1, n_days=3)
         )
         intent_reward = compute_step_reward(
-            action_type=reward_action_type,
+            action_type=action_type,
             dvs=self._sim.dvs,
             sm=self._sim.sm,
             amount=amount,
@@ -310,7 +405,7 @@ class CropEnvironment(
         self._sync_state()
 
         delta_reward = compute_delta_reward(
-            action_type=reward_action_type,
+            action_type=action_type,
             pre_sm=pre_sm,
             post_sm=self._sim.sm,
             pre_water_stress=pre_water_stress,
@@ -642,7 +737,10 @@ class CropEnvironment(
                 budget_total=scenario["budget"],
                 location=scenario["location"],
                 fert_count=self._state.fertilizer_events_count,
+                inspects_remaining=self._state.inspects_remaining,
+                has_crop_report=self._state.last_crop_report is not None,
             ),
+            inspects_remaining=self._state.inspects_remaining,
         )
 
         # ---------------------------------------------------------------
@@ -697,7 +795,9 @@ class CropEnvironment(
             obs.control_features.moisture_gap_to_target = 0.0
             obs.control_features.forecast_rain_3d = -1.0
             obs.control_features.forecast_rain_7d = -1.0
-            obs.control_features.dvs_distance_to_next_fertilizer_window = -1.0
+            # Preserve fert window signal (0.0 = inside, >0 = distance away)
+            # so the LLM still gets in_fert_window=YES on hidden tiers
+            # (dvs_distance_to_next_fertilizer_window is already set correctly)
             obs.control_features.estimated_budget_to_finish = -1.0
 
             # --- Replace weather forecast with NL summary ---
@@ -726,6 +826,8 @@ class CropEnvironment(
                 location=scenario["location"],
                 tier=tier,
                 fert_count=self._state.fertilizer_events_count,
+                inspects_remaining=self._state.inspects_remaining,
+                has_crop_report=self._state.last_crop_report is not None,
             )
 
         if tier >= 3:
@@ -737,23 +839,18 @@ class CropEnvironment(
             if "twso" in hidden_fields:
                 obs.crop_status.twso = -1.0
 
-        # --- Inspection reports (reveal exact values) ---
+        # --- Inspection reports (persisted from state + fresh) ---
+        # Fresh inspect reports are written to state before calling
+        # _build_observation, so we always populate from state.
         if inspect_performed == "inspect_soil":
-            obs.soil_report = generate_soil_report(
-                sm=sim.sm,
-                water_deficit=sim.sm < 0.22,
-                field_capacity=scenario["soil_params"].field_capacity,
-                wilting_point=scenario["soil_params"].wilting_point,
-                n_availability=sim.n_factor,
-                water_stress=sim._water_stress(),
-            )
-        elif inspect_performed == "inspect_crop":
-            obs.crop_report = generate_crop_report(
-                dvs=sim.dvs,
-                lai=sim.lai,
-                tagp=sim.tagp,
-                twso=sim.twso,
-                growth_stage=sim.growth_stage_name(),
-            )
+            # Fresh inspect — report was just persisted to state above
+            obs.soil_report = self._state.last_soil_report
+        elif self._state.last_soil_report:
+            obs.soil_report = self._state.last_soil_report
+
+        if inspect_performed == "inspect_crop":
+            obs.crop_report = self._state.last_crop_report
+        elif self._state.last_crop_report:
+            obs.crop_report = self._state.last_crop_report
 
         return obs

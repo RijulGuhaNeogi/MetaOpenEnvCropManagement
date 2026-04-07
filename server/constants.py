@@ -65,6 +65,7 @@ REWARD_DELTA_WEIGHT = 0.6          # Weight for observed-state-change reward
 # ---------------------------------------------------------------------------
 INSPECT_SOIL_COST = 10             # Budget cost for inspect_soil action
 INSPECT_CROP_COST = 20             # Budget cost for inspect_crop action
+INSPECT_MAX_TOTAL = 2              # Max total inspects per episode (any mix)
 
 # ---------------------------------------------------------------------------
 # Observability band thresholds

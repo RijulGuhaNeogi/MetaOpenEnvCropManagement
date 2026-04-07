@@ -1,0 +1,270 @@
+I’m going to trace the behavior end to end: prompt construction, LLM call path, oracle/reward/grader logic, and the three analytics files, then map each failure to the exact code path that produced it.
+
+The main question now is whether the bad behavior came from the model alone or from the environment shaping it into that behavior. I’m checking the live decision branches in the environment and oracle code to verify the subagent claims before I conclude.
+
+
+I’ve verified two important points in code: repeated inspect actions are not blocked anywhere, and terminal harvest bypasses the per-step harvest reward entirely. I’m pulling the observation-masking code next, because that determines whether the prompt is even executable on Tasks 2 and 3.
+
+I’ve isolated the main interaction: the prompt says “inspect once, then harvest,” but the environment never enforces “once,” and the reward/grader only weakly punishes getting that sequence wrong. I’m grabbing exact line references for those branches so the diagnosis is fully grounded.
+
+I found one more important issue in the analytics themselves: the displayed oracle-alignment percentage excludes the terminal step, so the harvest mistake is literally omitted from the alignment metric. I’m pulling that code path too, because it changes how you should read the JSONs.
+
+I have the root-cause picture now. The biggest non-obvious issue is that your analytics “oracle alignment” metric excludes terminal decisions and only checks action type, so it flatters the runs precisely where harvest mistakes matter most.
+
+This is a mixed failure. It is not just the model, and it is not just the grader.
+
+**Bottom Line**
+- Task 1 is mostly a model failure on harvest timing, amplified by a reward-design gap.
+- Task 2 is mixed: the inspection behavior is largely induced by your prompt/advisory design, but the actual early harvest is still a model failure.
+- Task 3 is the clearest environment/prompt-interface problem: inspection results are not persisted, repeated inspect is not blocked or penalized, and the model is asked to remember state that the observation no longer provides.
+- Your analytics headline is also misleading: “oracle alignment” excludes the terminal step and ignores amount mismatch in the headline match, so it hides the harvest mistake and flattens fertilizer-dose mistakes. See _llm_task_test.py and _llm_task_test.py.
+
+**Most Important Code Facts**
+- The system prompt tells the model:
+  - harvest at DVS >= 1.80, inspect once if DVS is hidden, and do not repeat inspect. See inference.py and inference.py.
+- On Tasks 2 and 3, the environment hides numeric DVS / SM / N by setting them to `-1.0`. See environment.py.
+- On hidden tiers, the prompt expects `in_fert_window=EARLY/OPTIMAL/LATE`, but the observation often only gives `in_fert_window=YES`. See inference.py. That means the prompt is asking the model to use information it often does not receive.
+- Inspect actions are converted into `wait` for simulation, so they are safe time-advancing actions with a positive reward. See environment.py and reward.py.
+- Explicit harvest goes straight to terminal grading before dense step harvest reward is used. See environment.py. The harvest reward branch in reward.py is effectively not teaching the live terminal harvest decision.
+- Auto-harvest at DVS >= 2.0 is allowed by the environment. See environment.py. The grader gives that only `0.2` harvest timing credit by design. See grader.py.
+- The oracle is not “the prompt implemented in code.” It is a separate perfect-information policy with its own harvest threshold (`1.90`) and a fertilizer amount computed from exact N-deficit fill. See inference.py, inference.py, and inference.py.
+
+**Task 1**
+Files: _analytics_task1.json, inference.py, environment.py, grader.py
+
+Verdict:
+- Main failure: model failed to follow an unambiguous visible-DVS harvest rule.
+- Secondary issue: the environment does not give a dense terminal harvest penalty, only the final grade.
+
+Step-by-step:
+- Steps 1-4 are normal. The advisory says wait, the prompt says wait, and the model waits.
+- Step 5 is the first interesting mismatch:
+  - State: `n_availability = 0.542`.
+  - Prompt heuristic says `<0.6 -> 40kg` for Tier 1. See inference.py.
+  - Model chose `30`.
+  - Oracle chose `50`, because oracle is using deficit-fill math, not the prompt table. See inference.py.
+- This means Task 1 fertilizer “misalignment” is not a grader bug. It is a prompt-vs-oracle mismatch plus a model simplification. The model appears to be using a coarse fixed-dose heuristic, not the prompt lookup.
+- Steps 6-15 are mostly fine.
+- Step 16 is the real failure:
+  - DVS is visible and is only `1.533`.
+  - Prompt says harvest only at `>= 1.80`. See inference.py.
+  - The model harvests anyway.
+- Why the score is still `0.5005` instead of collapsing:
+  - The final grader is deterministic and working as written.
+  - Early harvest cut yield badly: `2821.6 / 6748.0 = 0.4181`. See grader.py.
+  - Water and cost efficiency are gated by yield score, so they also drop. See grader.py and grader.py.
+  - Harvest timing still gets partial credit by formula, not zero. For `<1.6`, the code linearly gives up to `0.5`; at `1.533`, that becomes about `0.4789`. See grader.py.
+- So for Task 1:
+  - Not a prompt bug on harvest.
+  - Not a grader bug.
+  - Mostly model failure.
+  - But your reward shaping does not strongly teach harvest timing because terminal harvest bypasses dense step harvest reward. See environment.py and reward.py.
+
+**Task 2**
+Files: _analytics_task2.json, advisory.py, advisory.py, environment.py
+
+Verdict:
+- Inspection behavior is mostly induced by your advisory/prompt design and is rational under partial observability.
+- The final early harvest is still a model failure.
+- The good final score is because the grader intentionally gives substantial partial credit for slightly-early explicit harvest.
+
+Step-by-step:
+- Step 2 `inspect_soil` is not really a bad decision.
+  - Advisory explicitly says “Consider inspect_soil ($10)”. See [server/advisory.py](server/advisory.py#L158).
+  - Inspect actions are rewarded positively and advance like wait. See [server/environment.py](server/environment.py#L169-L181) and [server/reward.py](server/reward.py#L98-L105).
+  - So the model is being nudged toward inspection by both language and reward.
+- Step 5 fertilizer:
+  - Same pattern as Task 1.
+  - Model uses `30`, oracle uses `50`.
+  - This is again prompt-vs-oracle mismatch plus model simplification, not grader malfunction.
+- Step 8 fertilizer:
+  - Model uses `15`, oracle wants about `8.1`.
+  - Again, same action type but different amount.
+  - Your headline analytics still count this as a “match” because they only compare action type. See [_llm_task_test.py](_llm_task_test.py#L145-L146).
+- Step 16 `inspect_crop` is rational, and your code strongly encourages it:
+  - Advisory says “Use inspect_crop ($20) to confirm DVS before harvesting.” See advisory.py.
+  - The environment then attaches an exact `crop_report` to that resulting observation only. See environment.py.
+  - The prompt compression includes that report if present. See inference.py.
+- Step 17 harvest is the real problem:
+  - After step 16, the model should have had the exact crop report in the next prompt.
+  - It harvested explicitly at `harvest_dvs = 1.739`, which is still below `1.80`.
+  - That means the model had enough information and still took the wrong branch.
+- Why Task 2 still scored `0.7012`:
+  - The grader intentionally gives strong partial credit for slightly early explicit harvest between `1.6` and `1.8`. See grader.py.
+  - At `1.739`, the formula yields about `0.8464` harvest timing, which is exactly what your JSON shows.
+- So for Task 2:
+  - Step 2 inspect: mostly prompt/advisory/reward-induced, not a true failure.
+  - Step 16 inspect: also reasonable and induced by design.
+  - Step 17 harvest at 1.739: model failure.
+  - Grader is behaving as coded.
+  - Analytics under-report the seriousness because terminal mismatch is excluded from oracle-alignment percentage.
+
+**Task 3**
+Files: _analytics_task3.json, environment.py, environment.py, advisory.py, inference.py
+
+Verdict:
+- This is the strongest evidence of a design/interface problem, not just a model miss.
+- The model still made the last wrong call, but your environment sets up that mistake.
+
+Step-by-step:
+- Step 2 `inspect_soil` is the same story as Task 2: advisory and reward both support it.
+- Step 9 `inspect_crop` is also rational:
+  - Advisory explicitly says to inspect crop in ripening with hidden DVS. See advisory.py.
+  - So this is not evidence the model misunderstood the prompt.
+- Step 10 `irrigate(3)` is acceptable:
+  - Oracle wanted `5`.
+  - Model chose the prompt-default-ish `3cm`.
+  - This is a dose-choice difference, not the core failure.
+- Step 11 `inspect_crop` again is where the design problem shows up:
+  - The prompt says “inspect once” and “do not repeat.” See inference.py.
+  - But the environment does not store or expose any `inspect_crop_already_used` signal.
+  - Repeated inspect is not blocked in environment.py.
+  - Repeated inspect is not penalized; it is actually mildly rewarded in reward.py.
+- The most important subtle bug-like behavior is this:
+  - Inspection reports are ephemeral.
+  - `crop_report` exists only on the observation returned by the inspect step result. See environment.py.
+  - The prompt builder includes `crop_report` only if it is present on the current observation. See inference.py.
+  - There is no persistence of the inspected DVS into later observations.
+- That means:
+  - Step 9 inspect likely gave the model exact DVS on step 10.
+  - But step 10 was irrigation, not harvest.
+  - By step 11, that exact DVS is gone from the observation.
+  - The model sees hidden DVS again and the advisory again says “Use inspect_crop.”
+- So the model is being asked to remember “I already inspected and what I saw,” but the environment does not persist that fact anywhere. The only memory passed forward is “last action / last reward.” See inference.py.
+- Why the model still shares blame:
+  - Step 11 advisory also says “harvest window is open and narrowing.” See advisory.py.
+  - So the model did have a strong harvest cue and still chose inspect.
+- Why the final score is still `0.6432`:
+  - Auto-harvest gives fixed `0.2` harvest timing credit by design. See grader.py.
+  - Yield was still decent enough that the run stays above 0.6.
+- So for Task 3:
+  - Repeated inspect is primarily an observation/prompt contract flaw.
+  - Weak reward/penalty design reinforces it.
+  - The final miss is still partly model failure because the harvest-window advisory was already strong.
+
+**What Is Actually Wrong in Your System**
+- Prompt vs observation contract is broken on hidden tiers.
+  - Prompt asks for `EARLY/OPTIMAL/LATE` fertilization logic.
+  - Hidden-tier observation often only gives `in_fert_window=YES`. See inference.py.
+- Prompt vs state persistence is broken for inspection.
+  - Prompt says “inspect once.”
+  - Observation does not tell the model whether it already inspected.
+  - Exact inspected values are not persisted across future steps.
+- Reward shaping is unintentionally pro-inspection.
+  - Inspect is positively rewarded.
+  - Repeated inspect is allowed.
+  - Inspect advances the sim like wait, so it is a safe exploratory action.
+- Harvest shaping is weaker than it looks.
+  - The live terminal harvest decision does not use the dense harvest penalty/reward branch.
+  - It goes straight to final rubric score. See environment.py.
+- Oracle comparison is not a prompt-compliance test.
+  - Oracle uses full information and different heuristics, especially for fertilizer amount and harvest threshold. See inference.py and inference.py.
+
+**What Is Not Wrong**
+- The grader does not look buggy.
+  - It is deterministic.
+  - The score breakdowns match the formulas in grader.py.
+- The reward code is internally consistent.
+  - The problem is incentive design, not random inconsistency.
+- The advisory generator is not randomly hallucinating.
+  - It is deterministic and line-for-line explains why the model inspected in Tasks 2 and 3. See advisory.py and advisory.py.
+
+**Most Accurate Attribution**
+- Task 1:
+  - 70% model failure
+  - 20% harvest-reward shaping weakness
+  - 10% prompt/oracle fertilizer mismatch
+- Task 2:
+  - 40% model failure
+  - 35% advisory/prompt-driven inspection behavior
+  - 25% weak harvest penalty / misleading analytics
+- Task 3:
+  - 45% observation/prompt contract flaw
+  - 30% reward design issue around inspect and harvest
+  - 25% model failure on final decision
+
+**Why Your Analytics Are Misleading**
+- “Action matches oracle” only checks action type, not amount. See _llm_task_test.py.
+- “Oracle alignment %” excludes terminal steps entirely. See _llm_task_test.py.
+- So:
+  - Task 1 shows `100%` alignment even though the decisive terminal harvest was wrong.
+  - Task 2’s final early harvest is also omitted from the percentage.
+  - Fertilizer-dose mismatches are softened into “same action type.”
+
+## Plan: Failure Root-Cause Fixes
+Your best next investigation / repair order is:
+
+1. Fix the observation/prompt contract first.
+   - Persist `inspect_soil_used`, `inspect_crop_used`, and last inspected exact values into future observations.
+   - On hidden tiers, expose `in_fert_window=EARLY/OPTIMAL/LATE` if you want the prompt to rely on it.
+
+2. Fix analytics next.
+   - Include terminal-step mismatch in oracle-alignment reporting.
+   - Separate “action-type match” from “dose-quality match.”
+
+3. Fix reward shaping after that.
+   - Penalize repeated inspect.
+   - Decide whether explicit terminal harvest should receive the dense harvest reward branch or an equivalent terminal shaping term.
+
+4. Then re-evaluate prompt wording.
+   - Right now some “prompt failures” are really missing-state failures, especially on Task 3.
+
+The investigation plan is saved in /memories/session/plan.md.
+
+1. If you want, I can turn this into a concrete ranked change list with exact code edits to make.
+2. If you want, I can also produce a “counterfactual per task” table showing which score components would change first after each fix.
+
+Problem 1: Inspect actions are a trap, not a tool
+Your inspect actions:
+
+Cost time (advance sim 7 days, same as wait) — see environment.py:181
+Cost money ($10/$20) — but this is negligible against $300-800 budgets
+Give positive reward (+0.01 to +0.03) — see server/reward.py
+Return information that vanishes on the very next observation — see server/environment.py
+Are never blocked on repeat — the environment happily lets you inspect 30 times
+Have no state memory — nothing in the observation tells the agent "you already inspected" — see agent/inference.py
+The result: inspect is a positively-rewarded safe action that burns a week of growing season and produces information the agent cannot use unless it acts on it that same turn — which it can't, because the inspect is the action for that turn.
+
+This is not a minor flaw. It is a broken information loop. The agent inspects, gets DVS=1.85, and then on the next step the observation says DVS=-1.0 again. The rational response is to inspect again. Your prompt says "don't repeat," but the environment is actively pushing the agent to repeat.
+
+Problem 2: The terminal harvest decision has no dense reward signal
+When the model chooses harvest, the environment immediately terminates and scores via the grader. See server/environment.py. The dense harvest reward branch in server/reward.py — which contains your carefully tuned +0.20 for optimal, -0.15 for early, -0.30 for too-early — is never used for actual harvest decisions. It only fires if some other code calls compute_step_reward(action_type="harvest", ...) outside the environment step loop, which doesn't happen in the live episode.
+
+So the model gets no step-level signal about harvest quality. It only sees the final grade, which is a blended score across 5 metrics. The harvest timing component is only 12% of that score (weight 0.12 in server/constants.py). That means a catastrophically wrong harvest timing costs the agent maybe 0.05-0.10 in the final number. That's a weak teaching signal for what is arguably the single most consequential decision in the entire episode.
+
+Problem 3: Hidden tiers create an unresolvable information gap
+On Tasks 2 and 3, DVS is hidden (set to -1.0). The prompt tells the model rules that depend on DVS:
+
+"DVS >= 1.80 → harvest" — agent/inference.py
+"in_fert_window=EARLY → WAIT" — agent/inference.py
+But the observation often only provides in_fert_window=YES rather than EARLY/OPTIMAL/LATE — see agent/inference.py. And growth_stage is a coarse string ("ripening"), not a number. So the agent is given decision rules it literally cannot evaluate. The only escape hatch is inspect — which brings us back to Problem 1.
+
+On your inspect proposal
+You're asking: "don't waste a turn — let inspect return state without advancing the sim, or cap at 2 inspects."
+
+My honest take: capping at 2 is the better idea. Making inspect free is a bad idea.
+
+Here's why:
+
+If inspect doesn't advance the sim, it becomes a zero-cost oracle. The agent should always inspect before every action on hidden tiers. That trivializes partial observability entirely. Tasks 2 and 3 collapse into Task 1 with extra syntax. You lose the entire difficulty gradient that makes the hackathon interesting.
+
+Capping at 2 total inspects (any combination) is the right move because:
+
+It forces the agent to be strategic about when to inspect — do you use it for fertilizer calibration or harvest confirmation?
+It preserves partial observability as a real challenge
+It naturally eliminates the "inspect loop" that killed Task 3
+2 inspects over ~15-20 steps is a meaningful constraint but not crippling
+But you still need to fix the ephemeral report problem. Even with 2 inspects, if the information vanishes next step, the agent is in the same bind: inspect at step 9, get DVS=1.75, step 10 irrigate, step 11 DVS is hidden again. The agent knows it inspected and what it saw — a human would remember — but the observation doesn't.
+
+What I'd actually do:
+
+Cap total inspects at 2 (any mix of soil/crop). Track it in state and expose inspects_remaining: N in the observation.
+Persist the last inspected values into all subsequent observations until the episode ends (or at least for 2-3 steps). Add last_crop_inspect_dvs and last_soil_inspect_sm / last_soil_inspect_n fields. Mark them with the step number they were taken so the model knows they're stale but not gone.
+Flip the inspect reward to 0.0 or slightly negative on repeat (but with the cap, this becomes moot).
+Consider making inspect not advance the sim but still counting as the step action — so it doesn't burn a week of crop growth but does consume the agent's turn. This is the cleanest compromise: information has a turn cost but not a biological cost.
+Option 4 is worth thinking about carefully. Right now inspect advances the WOFOST simulation by 7 days. That means a late-season inspect can push DVS past 2.0 and trigger auto-harvest, which is exactly what killed Task 3. If inspect consumed the turn but didn't advance the sim, the agent pays in opportunity cost (one fewer action) but doesn't risk accidentally aging the crop past maturity.
+
+The cost efficiency concern you raised is a non-issue. Inspect costs $10-20 against $300-800 budgets. Even 2 inspects at $20 each is $40 max — that's 5-13% of budget. Cost efficiency in the grader is 1 - total_cost/budget, so $40 moves this by 0.05-0.13, and it's further gated by yield score and weighted at only 0.18. Net impact on final score: ~0.01-0.02. Noise-level.
+
+The real cost of inspect is time, not money. Each inspect burns 7 days of growing season. That's the actual damage vector. Which is another reason "inspect doesn't advance sim" deserves consideration.
+____________________________________________

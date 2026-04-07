@@ -74,12 +74,13 @@ RULE ZERO: If fert_count=2/2, NEVER fertilize again — skip to step 3.
 
 CHECK IN ORDER EACH STEP:
 
-1. HARVEST — DVS>=1.80 → harvest. If DVS hidden: inspect_crop ONCE at growth_stage="ripening", harvest only when DVS>=1.80 confirmed or advisory says "harvest window". MUST harvest explicitly; auto-harvest@DVS2.0=20% credit.
+1. HARVEST — NEVER harvest below DVS 1.80, even if growth_stage says "ripening". DVS>=1.80 → harvest. If DVS hidden: inspect_crop at growth_stage="ripening" to learn exact DVS. Only harvest when DVS>=1.80 confirmed or advisory says "harvest window". MUST harvest explicitly; auto-harvest@DVS2.0=20% credit.
 
 2. FERTILIZE — ONLY when fert_count<2 AND in_fert_window is OPTIMAL or LATE.
  If in_fert_window=EARLY → WAIT. The crop is in the window but not yet at target DVS. Waiting improves timing score.
  If in_fert_window=OPTIMAL → fertilize NOW. Best timing.
  If in_fert_window=LATE → fertilize NOW before window closes.
+ If in_fert_window=YES (hidden tiers) → check advisory for timing hints: "Early in window"→WAIT, "Near optimal"→fertilize, "Late in window"→fertilize.
  Strategy: you have exactly 2 fert slots across 2 windows. Apply a larger dose in window 1 (most vegetative growth ahead), a smaller top-up in window 2.
  Dose by nitrogen status:
   Tier1: n_avail>0.9→SKIP(wait), 0.8-0.9→10kg, 0.6-0.8→30kg, <0.6→40kg
@@ -88,7 +89,7 @@ CHECK IN ORDER EACH STEP:
 
 3. IRRIGATE — Tier1: moisture<0.28 & rain3d<0.3→irrigate. Tier2/3: moisture_band="low"/"critical" & no rain forecast. Dose: 3cm default, or sm_gap_to_optimal×90 if known.
 
-4. INSPECT (tier2/3 only) — inspect_soil($10): reveals EXACT nitrogen level for precise dose. Do ONCE before 1st fert window. inspect_crop($20): reveals EXACT DVS for precise harvest timing. Do ONCE at "ripening". Do NOT repeat. Skip if budget<$50.
+4. INSPECT (tier2/3 only) — 2 inspects total per episode (any mix). inspect does NOT cost a week — you get results immediately and act on them next step. inspect_soil($10): reveals EXACT nitrogen level. inspect_crop($20): reveals EXACT DVS. Results persist — you'll see SOIL REPORT / CROP REPORT in all future observations.
 
 5. WAIT — if nothing above applies. Waiting when crop is healthy is correct.
 
@@ -172,12 +173,15 @@ def compress_observation(obs, prev_action: str | None = None, prev_reward: float
         lines.append(f"Weather forecast: {weather_summary}")
 
     fert_count = cf.fertilizer_events_count if cf else 0
+    inspects_left = getattr(obs, "inspects_remaining", None)
+    inspect_str = f" inspects_left={inspects_left}" if inspects_left is not None else ""
     lines.append(
         f"Resources: water={ru.total_water_cm:.1f}cm "
         f"N={ru.total_n_kg_ha:.1f}kg "
         f"fert_count={fert_count}/2 "
         f"cost=${ru.total_cost:.1f} "
         f"remaining=${ru.budget_remaining:.1f}"
+        f"{inspect_str}"
     )
 
     # Control features — only show non-sentinel values
@@ -214,8 +218,16 @@ def compress_observation(obs, prev_action: str | None = None, prev_reward: float
                 else:
                     cf_parts.append("in_fert_window=YES")
             else:
-                # DVS hidden (T2/T3) — fall back to YES
-                cf_parts.append("in_fert_window=YES")
+                # DVS hidden (T2/T3) — derive timing from advisory text
+                adv = getattr(obs, "advisory_text", "") or ""
+                if "Early in window" in adv:
+                    cf_parts.append("in_fert_window=EARLY")
+                elif "Near optimal" in adv:
+                    cf_parts.append("in_fert_window=OPTIMAL")
+                elif "Late in window" in adv:
+                    cf_parts.append("in_fert_window=LATE")
+                else:
+                    cf_parts.append("in_fert_window=YES")
         elif fwd > 0:
             cf_parts.append(f"in_fert_window=NO({fwd:.2f}_DVS_away)")
         if cf_parts:
