@@ -182,8 +182,6 @@ class CropSimulator:
         self.total_water += irrigation_cm
 
         for _ in range(days):
-            if self.dvs >= 2.0:
-                break
             self._simulate_day(daily_irrig)
 
     def _simulate_day(self, irrigation_cm: float):

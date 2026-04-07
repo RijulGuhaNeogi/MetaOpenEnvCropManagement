@@ -174,5 +174,6 @@ class CropState(State):
     last_irrigation_day: Optional[int] = None
     last_fertilization_day: Optional[int] = None
     fertilizer_events_count: int = 0
+    maturity_reached_step: Optional[int] = None  # Step when DVS first hit 2.0
     last_soil_report: Optional[str] = None  # Persisted across steps
     last_crop_report: Optional[str] = None  # Persisted across steps

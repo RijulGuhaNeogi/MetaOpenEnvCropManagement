@@ -7,8 +7,9 @@ irrigation, fertilization, harvest, or wait.
 Episode flow:
   1. reset(seed, task_id) → creates a CropSimulator with seeded weather
   2. step(action) → validates action, advances sim by 7 days, returns obs
-  3. Episode ends when: agent harvests, DVS≥2.0 (auto-maturity),
-     season duration exceeded, or MAX_STEPS reached
+  3. Episode ends when: agent harvests, 2 steps after DVS≥2.0
+     (auto-harvest with shattering penalty), season duration
+     exceeded, or MAX_STEPS reached
   4. Terminal observation includes rubric_reward (grader score) and
       reward (trajectory reward for RL training)
 
@@ -26,6 +27,7 @@ from models import ControlFeatures, CropStatus, ResourcesUsed, SoilStatus, Weath
 from server.advisory import generate_advisory, generate_soil_report, generate_crop_report, weather_to_nl
 from server.constants import (
     MAX_STEPS, REWARD_DELTA_WEIGHT, REWARD_INTENT_WEIGHT,
+    STEP_REWARD_MIN, STEP_REWARD_MAX,
     INSPECT_SOIL_COST, INSPECT_CROP_COST,
     SM_BAND_CRITICAL, SM_BAND_LOW, SM_BAND_ADEQUATE,
     N_VISUAL_VERY_LOW, N_VISUAL_LOW, N_VISUAL_MODERATE, N_VISUAL_ADEQUATE,
@@ -416,6 +418,7 @@ class CropEnvironment(
         # Blend: agronomic intent + observed state change.
         # Validated against harvest_hesitation and drought_rescue probes.
         step_reward = REWARD_INTENT_WEIGHT * intent_reward + REWARD_DELTA_WEIGHT * delta_reward
+        step_reward = max(STEP_REWARD_MIN, min(STEP_REWARD_MAX, step_reward))
 
         # Dose quality feedback for fertilize actions
         dose_hint: str | None = None
@@ -441,8 +444,13 @@ class CropEnvironment(
         is_done = False
         final_reward = step_reward
 
-        if self._sim.dvs >= 2.0:
-            # Auto-harvest at full maturity
+        # Track when maturity first reached
+        if self._sim.dvs >= 2.0 and self._state.maturity_reached_step is None:
+            self._state.maturity_reached_step = self._state.step_count
+
+        if (self._state.maturity_reached_step is not None
+                and self._state.step_count - self._state.maturity_reached_step >= 2):
+            # Auto-harvest: agent had 2 steps to harvest after maturity
             self._state.harvested = True
             self._state.harvest_dvs = self._sim.dvs
             is_done = True

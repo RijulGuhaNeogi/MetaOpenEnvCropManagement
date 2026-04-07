@@ -180,10 +180,14 @@ Current shaping highlights:
 - **Harvest**
   - rewards harvesting in the maturity window DVS 1.8–2.0
   - penalizes early and late harvest
+  - 2-step grace period after DVS reaches 2.0: grain shattering (~23% yield loss/step) provides natural consequence for delaying; auto-termination fires after 2 extra steps
 - **Wait**
   - penalizes inaction when the crop is suffering (water stress or nitrogen deficiency)
   - adds a fert-window penalty when N is low and DVS is past the target
-  - small magnitude so it never dominates an actual action reward
+  - strong harvest-urgency ramp (−0.05 to −0.10) inside the harvest window [1.80, 2.00]; flat −0.10 during post-maturity grace period
+  - small magnitude outside harvest context so it never dominates an actual action reward
+
+All blended step rewards are clamped to [−0.9, +0.9] as a safety net.
 
 ### Rubric System (RFC 004)
 
@@ -220,7 +224,7 @@ The oracle has perfect knowledge of the crop model and computes the theoreticall
 | 3 (Hard) | 0.3143 |
 | **Overall** | **0.5374** |
 
-These scores are produced by the greedy heuristic, which uses deficit-based irrigation, WOFOST-calibrated fertilizer timing/amounts, and constants shared with the reward module. On Tier 2/3, the greedy heuristic falls back to midpoint estimates from growth stage labels and soil moisture bands — intentionally imprecise, which degrades fertilizer timing and irrigation precision. On Tasks 2/3, the greedy cannot time harvest precisely (growth stage "ripening" maps to DVS 1.75, below the 1.8 threshold), so it relies on auto-termination at DVS 2.0, which the grader penalizes. An LLM agent that strategically uses inspect actions, reasons over NL observations, and explicitly harvests in the maturity window can outperform the greedy baseline significantly on Tasks 2 and 3.
+These scores are produced by the greedy heuristic, which uses deficit-based irrigation, WOFOST-calibrated fertilizer timing/amounts, and constants shared with the reward module. On Tier 2/3, the greedy heuristic falls back to midpoint estimates from growth stage labels and soil moisture bands — intentionally imprecise, which degrades fertilizer timing and irrigation precision. On Tasks 2/3, the greedy cannot time harvest precisely (growth stage "ripening" maps to DVS 1.75, below the 1.8 threshold), so it relies on auto-termination (which now fires 2 steps after DVS hits 2.0, with grain shattering degrading yield), which the grader penalizes. An LLM agent that strategically uses inspect actions, reasons over NL observations, and explicitly harvests in the maturity window can outperform the greedy baseline significantly on Tasks 2 and 3.
 
 A **wait-only (do-nothing) policy** scores 0.37 / 0.35 / 0.17 on Tasks 1/2/3 respectively — the grader's anti-passivity calibration ensures that agents must take meaningful actions to score well.
 

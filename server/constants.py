@@ -60,6 +60,13 @@ REWARD_INTENT_WEIGHT = 0.4         # Weight for agronomic-intent reward
 REWARD_DELTA_WEIGHT = 0.6          # Weight for observed-state-change reward
 
 # ---------------------------------------------------------------------------
+# Step reward clamp bounds (safety net after blending intent + delta)
+# Used by: server/environment.py
+# ---------------------------------------------------------------------------
+STEP_REWARD_MIN = -0.9             # Worst possible per-step reward
+STEP_REWARD_MAX = 0.9              # Best possible per-step reward
+
+# ---------------------------------------------------------------------------
 # Inspection action costs
 # Used by: server/environment.py, agent/inference.py
 # ---------------------------------------------------------------------------

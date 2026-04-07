@@ -88,10 +88,14 @@ def compute_step_reward(
         past_target = (in_w1 and dvs >= FERT_TARGET_DVS_1) or (in_w2 and dvs >= FERT_TARGET_DVS_2)
         if n_availability < 0.7 and past_target:
             fert_window_penalty = -0.015
-        # Harvest-approach penalty: gradient pressure during ripening
+        # Harvest urgency: strong ramp inside harvest window [1.80, 2.00]
         harvest_urgency = 0.0
-        if dvs >= 1.50:
-            harvest_urgency = -0.02 * max(0.0, dvs - 1.50) / 0.30
+        if HARVEST_DVS_LOW <= dvs <= HARVEST_DVS_HIGH:
+            progress = (dvs - HARVEST_DVS_LOW) / max(HARVEST_DVS_HIGH - HARVEST_DVS_LOW, 0.01)
+            harvest_urgency = -0.05 - 0.05 * progress  # -0.05 at 1.80, -0.10 at 2.00
+        elif dvs >= HARVEST_DVS_HIGH:
+            # Post-maturity: DVS stuck at 2.0, shattering is destroying yield
+            harvest_urgency = -0.10
         return _clamp(stress_penalty + n_penalty + fert_window_penalty + harvest_urgency, -0.12, 0.0)
 
     elif action_type in ("inspect_soil", "inspect_crop"):

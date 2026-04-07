@@ -1,7 +1,7 @@
 # Architecture — Precision Agriculture Crop Management
 
 > **Last updated:** April 2026
-> **Version:** 2.3 — Environment fairness overhaul: 5-band nitrogen, budget-only inspect gating, dose quality feedback, SYSTEM_PROMPT alignment with oracle
+> **Version:** 2.5 — Reward shaping v2: 8 dense-reward fixes (wait penalties, inspect tier-gating, dose curve, terminal unification, delta yield-signal gating) + harvest urgency within [1.80, 2.00] window, post-maturity grace period (2 extra steps with grain shattering), step reward clamp [−0.9, +0.9]
 
 ---
 
@@ -68,7 +68,7 @@ The codebase is organized into **four logical layers**, each with a clear respon
 |-------|------|-----------|---------|
 | `CropAction` | `Action` | `action_type` (str), `amount` (float) | Agent's weekly decision |
 | `CropObservation` | `Observation` | 12 nested dicts: crop/soil/weather/resources/control_features/conflicts + task context + `dose_hint` | Rich observation for LLM or RL |
-| `CropState` | `State` | Full simulator state + episode tracking + `last_soil_report`, `last_crop_report` | Serializable checkpoint |
+| `CropState` | `State` | Full simulator state + episode tracking + `maturity_reached_step`, `last_soil_report`, `last_crop_report` | Serializable checkpoint |
 
 All models use Pydantic `BaseModel` with `extra="forbid"` and inherit from OpenEnv base types.
 
@@ -94,7 +94,7 @@ All models use Pydantic `BaseModel` with `extra="forbid"` and inherit from OpenE
 
 **Termination conditions** (checked in order):
 1. Agent sends `harvest` action → terminal, compute final grade with blended reward (0.7 × trajectory + 0.3 × normalized harvest step signal)
-2. DVS ≥ 2.0 → auto-harvest maturity
+2. 2 steps after DVS first reaches 2.0 → auto-harvest with shattering penalty (grain yield degrades ~23%/step post-maturity; agent gets 2 extra steps to harvest explicitly before forced termination)
 3. Day ≥ max_duration → forced season end
 4. Step ≥ MAX_STEPS (60) → safety cap
 
@@ -113,7 +113,7 @@ Pure-Python WOFOST-inspired model (~330 LOC):
 | Partitioning | DVS-dependent table: grain fraction increases post-anthesis |
 | LAI dynamics | Log-linear growth vegetative, senescence post-DVS 1.5 |
 
-**Key method:** `advance(days, irrigation_cm, n_kg_ha)` — advances the model by `days` time-steps, applying interventions.
+**Key method:** `advance(days, irrigation_cm, n_kg_ha)` — advances the model by `days` time-steps, applying interventions. Post-maturity (DVS ≥ 2.0): biomass growth stops (`actual_growth = 0`), but grain shattering continues (`SHATTER_RATE = 0.25/day` above `SHATTER_DVS = 1.85`), causing ~23% yield loss per 7-day step. This natural consequence, combined with the 2-step grace period before auto-termination, teaches the agent that delaying harvest past maturity is costly.
 
 **Data libraries** (module-level dicts, sourced from `server/crop_params.py`):
 - `CROP_LIBRARY` — region-specific WOFOST wheat profiles (wheat_nl, wheat_iowa, wheat_punjab)
@@ -199,9 +199,16 @@ Three-tier reward architecture:
 | **Delta** | `compute_delta_reward()` | [−0.15, +0.15] | After advancing sim |
 | **Trajectory** | `compute_trajectory_reward()` | [0.0, 1.0] | At episode end (= final grade, blended with harvest step signal) |
 
-Step reward blend: `0.4 × intent + 0.6 × delta`
+Step reward blend: `0.4 × intent + 0.6 × delta`, clamped to [`STEP_REWARD_MIN`, `STEP_REWARD_MAX`] (default [−0.9, +0.9]).
 
-Terminal reward blend: `0.7 × trajectory_reward + 0.3 × normalized_harvest_step_signal` — gives immediate credit for good harvest timing at the terminal step.
+Terminal reward blend: `0.7 × trajectory_reward + 0.3 × normalized_harvest_step_signal` — gives immediate credit for good harvest timing at the terminal step. Auto-termination (non-explicit harvest) applies a 0.5× multiplier on the harvest-timing component.
+
+**Reward shaping highlights (v2):**
+- Wait penalties doubled for stress/N deficit; harvest urgency ramps from −0.05 to −0.10 inside [1.80, 2.00] DVS window; −0.10 flat during post-maturity grace period
+- Inspect reward gated by observability tier (tier 1 = 0.0) and scaled by budget pressure
+- Fertilizer dose curve steepened (divisor halved) for sharper dose sensitivity
+- Delta yield-signal suppressed when the primary action effect is negative (prevents credit for passive yield growth during harmful actions)
+- Wait delta rain-luck confound halved (0.3→0.15 coefficient)
 
 ### 3.9 Client — `client.py`
 
@@ -338,7 +345,7 @@ CropEnvironment.step(action)
   ├── step_reward = 0.4 × intent + 0.6 × delta
   ├── Check termination:
   │     ├── harvest action → grade_episode() → blend 0.7×traj + 0.3×harvest_signal → terminal
-  │     ├── DVS ≥ 2.0 → auto-harvest → terminal
+  │     ├── 2 steps after DVS first hits 2.0 → auto-harvest (with shattering) → terminal
   │     ├── day ≥ max_duration → forced end → terminal
   │     └── step ≥ MAX_STEPS → safety cap → terminal
   ├── _build_observation()  ← new obs + control features
