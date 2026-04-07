@@ -11,11 +11,4 @@ venv/
 .idea/
 *.md
 !README.md
-Preparation
-ProblemDetails
-Samples
-studymaterialLinks
-AUDIT.md
-AUDITV2.md
-plan.md
 tests/

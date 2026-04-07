@@ -422,10 +422,7 @@ MetaHackathonPrep/
 │
 ├── docs/                          # Documentation
 │   ├── ARCHITECTURE.md            # This document
-│   ├── HACKATHON_MASTER.md        # Hackathon requirements synthesis & checklist
-│   ├── REFERENCES.md              # Scientific references (WOFOST, Boogaard et al.)
-│   ├── SUBMISSION_READINESS.md    # Pre-submission compliance report
-│   └── HackathonSubmissionUpdates # Submission feedback log
+│   └── REFERENCES.md              # Scientific references (WOFOST, Boogaard et al.)
 │
 ├── configs/                       # YAML crop/soil profiles (override hardcoded defaults)
 │   ├── wheat_nl.yaml
@@ -442,8 +439,6 @@ MetaHackathonPrep/
 │   ├── test_submission_surface.py # Competition format compliance tests (5 tests)
 │   └── test_ws_episode.py         # Real WebSocket transport tests (3 tests)
 │
-├── ProblemDetails                 # Problem statement (file)
-├── Samples                        # Reference env samples (file)
 ```
 
 ### Separation of Concerns Map

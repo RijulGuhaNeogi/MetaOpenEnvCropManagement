@@ -274,10 +274,7 @@ MetaHackathonPrep/
 │   └── benchmark_sweep.py  # Reusable multi-seed greedy benchmark utility
 ├── docs/
 │   ├── ARCHITECTURE.md     # Comprehensive architecture document
-│   ├── HACKATHON_MASTER.md # Hackathon requirements synthesis & checklist
-│   ├── REFERENCES.md       # Scientific references (WOFOST, Boogaard et al.)
-│   ├── SUBMISSION_READINESS.md  # Pre-submission compliance report
-│   └── HackathonSubmissionUpdates  # Submission feedback log
+│   └── REFERENCES.md       # Scientific references (WOFOST, Boogaard et al.)
 ├── examples/
 │   ├── direct_benchmark.py # Minimal direct-environment benchmark example
 │   └── client_greedy_run.py# Minimal WebSocket client example
