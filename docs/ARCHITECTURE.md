@@ -188,7 +188,7 @@ score = 0.35 × yield_score
 | timing_quality | Mean proximity of N actions to DVS 0.3 & 0.6 | [0.2, 1.0] |
 | harvest_timing | 1.0 if DVS ∈ [1.8, 2.00], penalty otherwise | [0, 1] |
 
-`target_yield` = max potential yield across all 3 locations for that seed (universal target).
+`target_yield` = peak potential yield for the task's own location, computed with unlimited water and nitrogen on the actual soil and weather for that seed.
 
 ### 3.8 Dense Rewards — `server/reward.py`
 
@@ -320,7 +320,7 @@ CropEnvironment.reset()
   ├── generate_scenario(seed=42, task_id=1)  ← scenarios.py
   │     ├── select location (Netherlands for task 1)
   │     ├── generate deterministic weather (seed × 31)
-  │     ├── compute universal target yield
+  │     ├── compute location-specific target yield
   │     └── return {weather, crop, soil, budget, target_yield, ...}
   ├── CropSimulator(crop_params, soil_params, weather)  ← crop_sim.py
   ├── _apply_start_state_overrides()  ← if probe scenario
@@ -437,9 +437,9 @@ MetaHackathonPrep/
 │   └── client_greedy_run.py       # WebSocket client example
 │
 ├── tests/                         # Test suite
-│   ├── test_smoke.py              # Smoke + RL + rubric/weather tests (64 tests)
-│   ├── test_integration.py        # HTTP endpoint integration tests (7 tests)
-│   ├── test_submission_surface.py # Competition format compliance tests (6 tests)
+│   ├── test_smoke.py              # Smoke + RL + rubric/weather tests (65 tests)
+│   ├── test_integration.py        # HTTP endpoint integration tests (9 tests)
+│   ├── test_submission_surface.py # Competition format compliance tests (5 tests)
 │   └── test_ws_episode.py         # Real WebSocket transport tests (3 tests)
 │
 ├── ProblemDetails                 # Problem statement (file)
@@ -570,10 +570,10 @@ models.py ← (no internal deps)
 
 | Task | Greedy Score (seed=42) | Oracle Score (seed=42) |
 |------|----------------------|----------------------|
-| 1 (Easy) | 0.7464 | 0.9593 |
-| 2 (Medium) | 0.5515 | 0.9409 |
-| 3 (Hard) | 0.3143 | 0.8769 |
-| **Overall** | **0.5374** | **0.9257** |
+| 1 (Easy) | 0.9588 | 0.9593 |
+| 2 (Medium) | 0.5298 | 0.9409 |
+| 3 (Hard) | 0.4224 | 0.9067 |
+| **Overall** | **0.6370** | **0.9356** |
 
 ---
 
@@ -582,7 +582,7 @@ models.py ← (no internal deps)
 | Decision | Rationale |
 |----------|-----------|
 | **Pure-Python simulator** | No PCSE dependency → smaller Docker image, faster startup, deterministic by construction |
-| **Universal target yield** | `target_yield = max(potential across all locations)` → yield_score never exceeds 1.0, difficulty ordering preserved |
+| **Location-specific target yield** | `target_yield = peak potential for the task's own location` → yield_score never exceeds 1.0, difficulty ordering preserved |
 | **Same grading weights for all tasks** | Difficulty from environment conditions, not scoring manipulation |
 | **Dense step rewards** | Intent + delta split gives RL agents per-step signal, not just sparse terminal reward |
 | **5 probe scenarios** | Internal RL diagnostics without changing public task definitions |

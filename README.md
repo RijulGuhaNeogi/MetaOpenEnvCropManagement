@@ -35,6 +35,25 @@ The WOFOST-inspired crop growth simulator captures real agricultural dynamics: t
 
 ---
 
+## Key Design Strengths
+
+| Strength | Detail |
+|----------|--------|
+| **Organic difficulty progression** | All 3 tasks use the **same scoring formula**. Difficulty comes from climate, budget, input costs, and observability — not inflated weights |
+| **Dense, aligned reward shaping** | Every step produces a blended intent + delta reward that mirrors the terminal grader — step rewards and final grades push the same behavior |
+| **Anti-exploit reward gating** | Efficiency metrics are multiplied by `max(yield_score, 0.1)` — a do-nothing agent cannot score high on water/cost efficiency |
+| **Crop vigor gating** | Delta rewards scale with `crop_vigor = f(twso / target)` — late-season efficiency actions on a failing crop get diminished credit, mirroring the grader |
+| **Explicit harvest incentive** | Agent-initiated harvest gets full timing credit; auto-harvest gets only 20% (0.2× penalty) — agents must learn *when* to stop |
+| **Natural consequences** | Grain shattering (~23% yield loss per 7-day step past DVS 1.85) provides a physics-based penalty for harvest delay, not an arbitrary rule |
+| **Information-action tradeoff** | Inspect actions reveal hidden state but cost budget; economically dominated by real actions so they can't be spammed for free reward |
+| **Deterministic everywhere** | Same seed → identical weather, growth, grading, rewards, forecasts. Full reproducibility for debugging and benchmarking |
+| **Region-calibrated stress** | Punjab has lower heat thresholds (34°C/31°C vs 35°C/32°C), faster N depletion, and sandy soil — difficulty is agronomically grounded |
+| **Comprehensive penalties** | Overwatering, over-fertilization (>2 apps hard-capped), late/early fertilization, inaction during stress, harvest urgency, budget exhaustion |
+| **Advisory without prescription** | Rich NL advisory describes field conditions factually but never tells the agent what to do — the agent must reason |
+| **Probe diagnostics** | 5 edge-case probe scenarios (over-irrigation trap, late-fertilizer temptation, budget starvation, harvest hesitation, drought rescue) validate reward directional correctness without altering public tasks |
+
+---
+
 ## Architecture
 
 ```
@@ -152,7 +171,8 @@ All grading is **deterministic** — same inputs always produce the same score (
 
 ### Unified Weights (same for all tasks)
 
-Difficulty comes from **environment conditions** (climate, budget, soil), not from different scoring weights. The same formula is used for all tasks:
+Difficulty comes from **environment conditions** (climate, budget, soil), not from different scoring weights. The same formula is used for all 3 tasks — a key design choice that keeps grading fair and lets difficulty emerge naturally from the scenario:
+
 
 | yield | water | cost | timing | harvest |
 |-------|-------|------|--------|--------|
@@ -188,6 +208,14 @@ Current shaping highlights:
   - small magnitude outside harvest context so it never dominates an actual action reward
 
 All blended step rewards are clamped to [−0.9, +0.9] as a safety net.
+
+### Anti-Exploit Design
+
+- **Yield-gated efficiency:** Water and cost efficiency scores are multiplied by `max(yield_score, 0.1)`. An agent that uses zero water and zero fertilizer gets near-zero final score, not a high efficiency score.
+- **Crop vigor scaling:** Delta rewards for irrigation/fertilization are scaled by crop vigor (`twso / target`). Late-season actions on a failing crop get diminished credit, preventing reward farming on doomed episodes.
+- **Inspection budget pressure:** Inspect reward is scaled by `budget_remaining / (cost × 10)`. Repeated inspections on a drained budget yield near-zero reward.
+- **Fertilizer hard cap:** More than 2 fertilizer applications trigger a hard penalty (−0.04 to −0.14), regardless of timing or dose quality.
+- **Auto-harvest penalty:** If the agent fails to harvest explicitly, auto-termination applies a 0.5× multiplier to the harvest-timing reward component (only 20% credit vs 100%). Combined with grain shattering losses, passivity is doubly penalized.
 
 ### Rubric System (RFC 004)
 
@@ -266,9 +294,9 @@ MetaHackathonPrep/
 │   ├── scenarios.py        # Seeded weather + scenario generator (3 locations)
 │   └── tasks.py            # Task definitions (3 difficulty levels)
 ├── tests/
-│   ├── test_smoke.py       # Smoke + RL + rubric tests (64 tests)
-│   ├── test_integration.py # HTTP endpoint integration tests (7 tests)
-│   ├── test_submission_surface.py  # Competition format compliance tests (6 tests)
+│   ├── test_smoke.py       # Smoke + RL + rubric tests (65 tests)
+│   ├── test_integration.py # HTTP endpoint integration tests (9 tests)
+│   ├── test_submission_surface.py  # Competition format compliance tests (5 tests)
 │   └── test_ws_episode.py  # WebSocket full-episode tests (3 tests)
 ├── models.py               # CropAction, CropObservation, CropState
 ├── client.py               # WebSocket EnvClient subclass
@@ -506,7 +534,7 @@ Current test coverage includes:
 - passive-policy and extra-fertilizer regression checks
 - late-harvest boundary regression checks
 
-The full test suite has **79 passing tests** (64 smoke/rubric/weather + 7 HTTP integration + 5 submission surface + 3 real WebSocket transport).
+The full test suite has **82 passing tests** (65 smoke/rubric/weather + 9 HTTP integration + 5 submission surface + 3 real WebSocket transport).
 
 ## Limitations
 
@@ -518,6 +546,23 @@ This environment is intentionally **WOFOST-inspired**, not a full scientific cro
 - The simulator is tuned for clear reward signal and grading stability, not for exact agronomic calibration to a specific field trial dataset.
 
 Those tradeoffs are intentional. The benchmark is optimized for deterministic evaluation, transparent grading, and trainable sequential decision-making rather than maximum biophysical fidelity.
+
+---
+
+## RL Learnability
+
+This environment is designed to produce a **learnable reward landscape**, not just a grading function:
+
+- **Reward–grader alignment:** Step-level intent and delta rewards are calibrated to push the same behavior the terminal grader scores. An agent that maximizes cumulative step reward will also score well on the final rubric.
+- **Shaped, not sparse:** Every action type produces a non-zero reward signal. Wait is always ≤ 0; irrigate and fertilize range from −0.14 to +0.16 depending on timing and dose quality; harvest yields +0.20 at optimal DVS. No action is reward-silent.
+- **Smooth gradients:** Fertilize reward peaks sharply at target DVS (0.30, 0.60) with linear decay — the agent gets a clear gradient toward optimal timing. Irrigation reward scales with dose accuracy and soil dryness — the agent learns precise amounts, not just thresholds.
+- **Multi-signal terminal:** The final reward blends 70% trajectory grade (5 rubric metrics) with 30% harvest-timing signal, giving both cumulative and pointwise feedback at episode end.
+- **Curriculum-ready:** The 3 tasks form a natural curriculum: Tier 1 (full state, generous budget) → Tier 2 (hidden state, moderate budget) → Tier 3 (minimal state, tight budget). Agents can train on easy tasks first and transfer.
+- **Consistent constants:** All threshold values (harvest DVS, fertilizer windows, SM targets) are centralized in `server/constants.py` and verified consistent across reward, grader, and environment modules. No hidden misalignments.
+- **Trajectory export:** `TRAJECTORY_OUTPUT` env var enables JSONL export with `(observation, action, reward, next_observation, done, metadata)` tuples for offline RL / imitation learning.
+- **Training adapter:** `agent/training_adapter.py` provides an 8-action discrete mapping (`wait`, `harvest`, `irrigate_small/medium/large`, `fertilize_small/medium/large`) for standard RL frameworks.
+
+---
 
 ## Internal RL Utilities
 
@@ -547,17 +592,20 @@ The simulator implements key dynamics from the WOFOST (World Food Studies) model
 - **Biomass:** Light-use-efficiency model with PAR interception via LAI
 - **Water balance:** Rainfall + irrigation - evapotranspiration (Hargreaves ET)
 - **Water stress:** Reduces growth when soil moisture drops below threshold
-- **Heat stress:** Extreme heat sharply penalizes flowering and sustained heat mildly penalizes grain fill, with bounded deterministic effects strongest in hot scenarios like Punjab
-- **Nitrogen response:** Fertilization increases growth factor (0.3→1.0); phenology-aware depletion (slow pre-anthesis, fast post-anthesis)
+- **Heat stress:** Two separate mechanisms — pollen sterility during flowering (DVS 0.8–1.2, triggered >35°C) and kernel weight reduction during grain-fill (DVS 1.0–1.5, triggered >32°C). Punjab uses **lower thresholds** (34°C/31°C) for region-realistic heat sensitivity.
+- **Nitrogen response:** Fertilization increases the N-factor (0.3→1.0) with intentionally low recovery (0.008 per kg applied) — timing matters more than volume. Depletion is phenology-aware: slow pre-anthesis (0.0003/day), fast post-anthesis (0.0015/day; Punjab: 0.0020/day).
 - **Partitioning:** DVS-dependent allocation to storage organs (grain yield)
 - **Senescence:** Realistic LAI decline after DVS > 1.5 (~7-10 day period)
 
 This is a **WOFOST-inspired** simulator, not the PCSE reference implementation. That tradeoff is intentional: the current environment favors deterministic behavior, transparent grading, small deployment footprint, and strong RL signal quality over additional simulator complexity.
 
-Three climatic profiles with deterministic weather generation:
-- **Netherlands:** Mild maritime, reliable rainfall (easy)
-- **Iowa, USA:** Continental, moderate with dry spells (medium)
-- **Punjab, India:** Hot semi-arid, minimal winter rain (hard)
+Three climatic profiles with deterministic season-based weather generation:
+
+| Location | Rainfall | Temperature | Season | Soil Type | Key Constraint |
+|----------|----------|-------------|--------|-----------|----------------|
+| **Netherlands** | 50–70 cm (45% rain days) | Mild 5–17°C | 280 days (Oct–Jul) | Clay loam (FC 0.43) | None — favorable baseline |
+| **Iowa, USA** | 30–50 cm (30% rain days) | Variable 3–19°C | 260 days | Silt loam (FC 0.40) | Drought spells, variable dry periods |
+| **Punjab, India** | 5–10 cm (12% rain days) | Hot 10–30°C | 200 days (Nov–Apr) | Sandy loam (FC 0.35) | Irrigation-dependent, heat stress, fast N depletion |
 
 ### WOFOST Parameter Sources
 
