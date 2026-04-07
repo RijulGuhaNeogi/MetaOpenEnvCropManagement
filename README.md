@@ -33,6 +33,8 @@ Precision agriculture is a $12B+ industry where farmers make weekly decisions ab
 
 The WOFOST-inspired crop growth simulator captures real agricultural dynamics: temperature-sum phenology, water stress, nitrogen response, and biomass partitioning.
 
+**Scientifically grounded:** The simulator's equations and parameters are drawn from 17 peer-reviewed agronomic references — including the original WOFOST model (van Diepen et al. 1989), Hargreaves evapotranspiration, Beer–Lambert light interception, Feddes water-stress functions, and FAO/IIASA regional calibrations for all three task locations. See [docs/REFERENCES.md](docs/REFERENCES.md) for the full bibliography.
+
 ---
 
 ## Key Design Strengths
@@ -84,6 +86,10 @@ The WOFOST-inspired crop growth simulator captures real agricultural dynamics: t
 | 1 | Basic Crop Growth | Easy | Netherlands | $800 | Tier 1 (full numeric) | Fertilize at right growth stages, harvest at maturity |
 | 2 | Water-Efficient Farming | Medium | Iowa, USA | $450 | Tier 2 (hidden DVS/SM, bands + NL weather) | Balance yield vs water conservation with partial information |
 | 3 | Precision Agriculture | Hard | Punjab, India | $300 | Tier 3 (most fields hidden, bucketed weather) | Maximize yield + minimize water + stay in budget under information scarcity |
+
+### Observability Tiers as Curriculum Design
+
+The three tasks form a natural **reasoning curriculum** — not just a difficulty ladder. Tier 1 gives full numeric state, so agents learn optimal policy with complete information. Tier 2 hides key variables behind coarsened bands and natural-language weather, forcing the agent to generalize under partial observability. Tier 3 further restricts signals to bucketed summaries and introduces an **information-action tradeoff**: two inspect actions (`inspect_soil` at $10, `inspect_crop` at $20) reveal exact hidden values but consume budget that could fund real interventions. Unlike typical RL environments where observation quality is fixed, agents here must learn *when information is worth paying for* — a decision-theoretic challenge with no analogue in game or benchmark environments.
 
 **Why Task 3 is genuinely hard:**
 - Punjab has minimal rainfall during the wheat season — irrigation is essential but expensive
@@ -180,6 +186,8 @@ Difficulty comes from **environment conditions** (climate, budget, soil), not fr
 
 ### Step Rewards
 
+Unlike environments with binary pass/fail grading or sparse terminal-only rewards, every step in this environment produces a **dense, agronomically-grounded reward** that shapes the same behavior the terminal grader scores. This means an RL agent can learn from every transition, not just episode outcomes.
+
 Dense per-step signals are split into:
 
 - **Intent reward:** evaluates whether the action is agronomically sensible before transition
@@ -233,26 +241,23 @@ The rubric is provided by `CropManagementRubric` (in `server/rubric.py`), a thin
 
 ## Baseline Scores (seed=42)
 
-### Oracle (Perfect-Information) Baseline
+Two reference policies bracket the achievable score range. They use **different information** and serve **different purposes**:
 
-| Task | Score |
-|------|-------|
-| 1 (Easy) | 0.9593 |
-| 2 (Medium) | 0.9409 |
-| 3 (Hard) | 0.9067 |
+| | Oracle Ceiling | Greedy Baseline |
+|---|---|---|
+| **What it sees** | Full internal simulator state (exact DVS, soil moisture, N-factor, weather) | Only the public observation the LLM would see (masked bands, NL weather, advisory text on Tier 2/3) |
+| **What it does** | Plans optimal timing using thermal-sum lookahead, exact N-deficit tracking, and perfect harvest targeting | Applies simple threshold rules to whatever is visible — irrigate if dry, fertilize if in window, harvest if ripe |
+| **Purpose** | Upper bound — the best any policy could do with perfect information | Fair comparison target — shares the same information constraint as the LLM agent |
 
-The oracle baseline is evaluated from the environment's exact internal state, not the public masked observation surface. That makes it the correct upper-bound reference trajectory for local baselines and regression tests.
+### Scores
 
-### Greedy Heuristic Baseline
+| Task | Oracle Ceiling | Greedy Baseline | Gap |
+|------|---------------|-----------------|-----|
+| 1 (Easy) | 0.9593 | 0.9588 | 0.0005 |
+| 2 (Medium) | 0.9409 | 0.5298 | 0.4111 |
+| 3 (Hard) | 0.9067 | 0.4224 | 0.4843 |
 
-| Task | Score |
-|------|-------|
-| 1 (Easy) | 0.9588 |
-| 2 (Medium) | 0.5298 |
-| 3 (Hard) | 0.4224 |
-| **Overall** | **0.6370** |
-
-These scores are produced by a fresh observation-limited greedy heuristic that sees only the same public fields the LLM sees through the prompt surface: exact tier-1 values, or masked bands plus advisory text plus inspection reports on tier-2/3. It does not use simulator internals, peak-yield estimates, or the oracle ceiling path. On the hidden tasks it acts only on harvest-window cues, fertilization-window hints, soil bands, weather summaries, and optional inspect results, so the oracle ceiling still retains a clear advantage on Tasks 2 and 3.
+**Reading the gap:** On Task 1 (full observability), the greedy heuristic nearly matches the oracle — information isn't the bottleneck. On Tasks 2–3, the gap widens dramatically because the greedy heuristic cannot see the hidden state it needs for precise decisions. This gap is the **observability challenge** — the space where an LLM that reasons over natural-language cues and strategically uses inspect actions can outperform the blind heuristic.
 
 A **wait-only (do-nothing) policy** scores 0.37 / 0.35 / 0.17 on Tasks 1/2/3 respectively — the grader's anti-passivity calibration ensures that agents must take meaningful actions to score well.
 
@@ -566,21 +571,27 @@ This environment is designed to produce a **learnable reward landscape**, not ju
 
 ## Internal RL Utilities
 
-These are useful for RL development but do not change the public task interface:
+### Reward-Alignment Probe Scenarios
 
-- **Probe scenarios** via `reset(..., probe_name=...)`
-  - `over_irrigation_trap`
-  - `late_fertilizer_temptation`
-  - `budget_starvation`
-  - `harvest_hesitation`
-  - `drought_rescue`
-- **Discrete action adapter** in `agent/training_adapter.py`
-  - `wait`
-  - `harvest`
-  - `irrigate_small`, `irrigate_medium`, `irrigate_large`
-  - `fertilize_small`, `fertilize_medium`, `fertilize_large`
+Five purpose-built edge-case scenarios validate that dense step rewards push the same direction as the terminal grader — without modifying public tasks. Each probe isolates a single failure mode an RL agent might exploit or stumble on:
 
-These utilities are intended for diagnostics and training convenience only. The public OpenEnv action schema remains `action_type + amount`.
+| Probe | What It Tests |
+|-------|---------------|
+| `over_irrigation_trap` | Agent faces saturated soil + forecast rain — correct reward must penalize unnecessary irrigation, not reward "doing something" |
+| `late_fertilizer_temptation` | DVS is past the optimal window — fertilizing now wastes budget with minimal yield benefit; reward must be negative despite the action "looking productive" |
+| `budget_starvation` | Budget is nearly exhausted — agent must choose between an inspect (information) and a real action (intervention); reward must reflect opportunity cost |
+| `harvest_hesitation` | Crop is mature and shattering has begun — every wait step must carry escalating penalty; reward must ramp urgency |
+| `drought_rescue` | Severe water stress mid-season — immediate irrigation must produce a large positive delta reward to overcome the "save budget" heuristic |
+
+Activate via `reset(..., probe_name="harvest_hesitation")`. Probes share the same reward and grading code as public tasks — they only override the initial scenario state.
+
+### Discrete Action Adapter
+
+`agent/training_adapter.py` provides an 8-action discrete mapping for standard RL frameworks:
+
+`wait` · `harvest` · `irrigate_small` · `irrigate_medium` · `irrigate_large` · `fertilize_small` · `fertilize_medium` · `fertilize_large`
+
+The public OpenEnv action schema remains `action_type + amount`.
 
 ---
 
