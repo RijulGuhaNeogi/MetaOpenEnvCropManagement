@@ -230,6 +230,7 @@ class CropEnvironment(
                     n_availability=self._sim.n_factor,
                     n_recov=scenario["crop_params"].N_RECOV,
                     fert_events_count=self._state.fertilizer_events_count,
+                    task_tier=task.get("observability_tier", 1),
                 )
 
                 return self._build_observation(
@@ -474,7 +475,26 @@ class CropEnvironment(
                 task_id=self._state.current_task_id,
                 explicit_harvest=self._state.explicit_harvest,
             )
-            final_reward = compute_trajectory_reward(grade)
+            # Unified terminal reward: same blend as explicit harvest,
+            # but auto-termination gets a halved harvest-timing component
+            # so the agent is always taught to harvest explicitly.
+            harvest_step_signal = compute_step_reward(
+                action_type="harvest",
+                dvs=self._state.harvest_dvs,
+                sm=self._sim.sm,
+                amount=0.0,
+                cost=0.0,
+                budget_remaining=self._state.budget - self._state.total_cost,
+                total_n=self._sim.total_n,
+                total_water=self._sim.total_water,
+            )
+            normalized_harvest = (harvest_step_signal + 0.30) / 0.50
+            normalized_harvest = max(0.0, min(1.0, normalized_harvest))
+            auto_penalty = 0.5 if not self._state.explicit_harvest else 1.0
+            final_reward = (
+                0.7 * compute_trajectory_reward(grade)
+                + 0.3 * normalized_harvest * auto_penalty
+            )
             return self._build_observation(
                 task, done=True, reward=final_reward,
                 rubric_reward=grade,

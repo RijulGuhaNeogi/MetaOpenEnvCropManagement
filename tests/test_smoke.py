@@ -663,9 +663,10 @@ def test_passive_auto_harvest_penalized():
         assert breakdown["harvest_timing"] == pytest.approx(0.2)
         # No fertilizer → zero timing_quality
         assert breakdown["timing_quality"] == pytest.approx(0.0)
-        # Overall score must be low
-        assert wait_score < 0.40, (
-            f"Task {task_id}: wait-only score {wait_score} too high (expected < 0.40)"
+        # Overall score must be low (terminal reward includes halved
+        # harvest-timing blend for auto-termination)
+        assert wait_score < 0.45, (
+            f"Task {task_id}: wait-only score {wait_score} too high (expected < 0.45)"
         )
 
 

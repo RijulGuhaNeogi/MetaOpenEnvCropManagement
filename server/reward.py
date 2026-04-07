@@ -69,6 +69,7 @@ def compute_step_reward(
     n_availability: float = 1.0,
     n_recov: float = DEFAULT_N_RECOV,
     fert_events_count: int = 0,
+    task_tier: int = 1,
 ) -> float:
     """Dense per-step reward based on agronomic correctness.
 
@@ -77,9 +78,8 @@ def compute_step_reward(
     if action_type == "wait":
         # Penalise inaction when the crop is suffering — the agent should
         # feel the cost of doing nothing while soil dries or N depletes.
-        # Small magnitude so it never dominates an actual action reward.
-        stress_penalty = max(0.0, 1.0 - water_stress) * -0.04   # up to -0.04 at full stress
-        n_penalty = max(0.0, 0.5 - n_availability) * -0.03      # up to -0.015 at n=0.0
+        stress_penalty = max(0.0, 1.0 - water_stress) * -0.08   # up to -0.072 at full stress
+        n_penalty = max(0.0, 0.5 - n_availability) * -0.06      # up to -0.03 at n=0.0
         # Penalise waiting inside a fert window when crop still needs N
         # BUT only when past the target DVS — waiting early is correct strategy
         fert_window_penalty = 0.0
@@ -88,21 +88,38 @@ def compute_step_reward(
         past_target = (in_w1 and dvs >= FERT_TARGET_DVS_1) or (in_w2 and dvs >= FERT_TARGET_DVS_2)
         if n_availability < 0.7 and past_target:
             fert_window_penalty = -0.015
-        return _clamp(stress_penalty + n_penalty + fert_window_penalty, -0.06, 0.0)
+        # Harvest-approach penalty: gradient pressure during ripening
+        harvest_urgency = 0.0
+        if dvs >= 1.50:
+            harvest_urgency = -0.02 * max(0.0, dvs - 1.50) / 0.30
+        return _clamp(stress_penalty + n_penalty + fert_window_penalty + harvest_urgency, -0.12, 0.0)
 
     elif action_type in ("inspect_soil", "inspect_crop"):
-        # Information-gathering: context-sensitive reward to encourage
-        # strategic inspection on hidden tiers.
-        # Higher reward for inspect_crop at ripening (harvest-timing critical)
-        # and inspect_soil during fert window (dose calibration).
+        # Information-gathering: gated by observability tier and budget
+        # pressure.  Tier 1 already shows everything — inspection has no
+        # information value.  Tier 3 gets a bonus because data is scarce.
+        if task_tier <= 1:
+            return 0.0  # All fields visible — no information value
+
+        # Base reward depends on agronomic context
         if action_type == "inspect_crop" and dvs >= 1.5:
-            return _clamp(0.03, -0.02, 0.04)  # Ripening — high-value
-        if action_type == "inspect_soil" and (
+            base_reward = 0.03  # Ripening — high-value
+        elif action_type == "inspect_soil" and (
             (FERT_WINDOW_1[0] <= dvs <= FERT_WINDOW_1[1])
             or (FERT_WINDOW_2[0] <= dvs <= FERT_WINDOW_2[1])
         ):
-            return _clamp(0.02, -0.02, 0.03)  # In fert window — moderate-value
-        return _clamp(0.01, -0.02, 0.02)
+            base_reward = 0.02  # In fert window — moderate-value
+        else:
+            base_reward = 0.01
+
+        # Tier 3 bonus: information is scarcer and more valuable
+        if task_tier >= 3:
+            base_reward *= 1.5
+
+        # Budget-pressure scaling: inspections are relatively expensive
+        # on tight budgets
+        budget_factor = min(1.0, budget_remaining / max(cost * 10, 1.0))
+        return _clamp(base_reward * budget_factor, -0.02, 0.06)
 
     elif action_type == "irrigate":
         target_sm = (target_sm_low + target_sm_high) / 2.0
@@ -140,7 +157,7 @@ def compute_step_reward(
             timing_score = max(0.0, 1.0 - abs(dvs - (target_dvs or dvs)) / 0.10)
             timing_multiplier = 0.30 + 0.70 * timing_score
             dose_ratio = amount / max(target_amount, 1.0)
-            fit_score = max(0.0, 1.0 - min(abs(dose_ratio - 1.0), 2.0) / 2.0)
+            fit_score = max(0.0, 1.0 - min(abs(dose_ratio - 1.0), 1.0))
             season_excess = max(0.0, projected_total_n - 55.0)
             excess_penalty = min(0.14, season_excess / 30.0 * 0.14)
             reward = window_bonus * fit_score * timing_multiplier - excess_penalty
@@ -200,10 +217,12 @@ def compute_delta_reward(
     if action_type in ("wait", "harvest"):
         if action_type == "harvest":
             return 0.0
-        # Wait: state deterioration/recovery + yield progress
+        # Wait: state deterioration/recovery + yield progress.
+        # Halved stress_delta coefficient to reduce weather-luck confound
+        # (natural rain relief shouldn't dominate the wait signal).
         stress_delta = post_water_stress - pre_water_stress
         n_delta = post_n_availability - pre_n_availability
-        return _clamp(0.3 * stress_delta + 0.2 * n_delta + yield_signal, -0.08, 0.04)
+        return _clamp(0.15 * stress_delta + 0.2 * n_delta + yield_signal, -0.08, 0.04)
 
     # Crop vigor: mirrors grader's max(yield_score, 0.1) gating of efficiency.
     # Early season (twso=0): vigor=1.0 (don't suppress). Late season with
@@ -221,20 +240,24 @@ def compute_delta_reward(
         stress_gain = post_water_stress - pre_water_stress
         overshoot_penalty = max(0.0, post_sm - 0.40) * 0.6
         no_effect_penalty = 0.02 if post_sm <= pre_sm + 0.002 else 0.0
+        # Only credit yield progress when the primary effect is positive
+        effective_yield = yield_signal if stress_gain > 0 else 0.0
         reward = (
             0.7 * stress_gain
             - overshoot_penalty
             - no_effect_penalty
             - cost_penalty
             - spend_pressure
-            + yield_signal
+            + effective_yield
         )
         return _clamp(reward, -0.15, 0.15)
 
     if action_type == "fertilize":
         n_gain = post_n_availability - pre_n_availability
         inefficiency_penalty = 0.02 if n_gain < 0.01 else 0.0
-        reward = 0.6 * n_gain - inefficiency_penalty - cost_penalty - spend_pressure + yield_signal
+        # Only credit yield progress when the primary effect is positive
+        effective_yield = yield_signal if n_gain > 0 else 0.0
+        reward = 0.6 * n_gain - inefficiency_penalty - cost_penalty - spend_pressure + effective_yield
         return _clamp(reward, -0.15, 0.15)
 
     return 0.0
