@@ -74,7 +74,7 @@ RULE ZERO: If fert_count=2/2, NEVER fertilize again — skip to step 3.
 
 CHECK IN ORDER EACH STEP:
 
-1. HARVEST — NEVER harvest below DVS 1.80, even if growth_stage says "ripening". DVS>=1.80 → harvest. If DVS hidden: inspect_crop to learn exact DVS. Only harvest when DVS>=1.80 confirmed or advisory says "harvest window". MUST harvest explicitly; auto-harvest@DVS2.0=20% credit.
+1. HARVEST — NEVER harvest below DVS 1.80, even if growth_stage says "ripening". If the observation shows an exact numeric DVS, compare that number directly and do not round it up: 1.799 or 1.796 is still below 1.80, so choose WAIT. Ripening alone is not enough to harvest. Only harvest when the exact shown DVS is >=1.80. If DVS hidden: inspect_crop to learn exact DVS. On hidden tiers, only harvest when DVS>=1.80 is confirmed by inspection or advisory explicitly says the "harvest window" is open. MUST harvest explicitly; auto-harvest@DVS2.0=20% credit.
 
 2. FERTILIZE — ONLY when fert_count<2 AND in_fert_window is OPTIMAL or LATE.
  If in_fert_window=EARLY → WAIT. The crop is in the window but not yet at target DVS. Waiting improves timing score.
