@@ -83,6 +83,11 @@ class WOFOSTCropParams:
     N_FACTOR_FLOOR: float = 0.30       # — — minimum N availability factor
     N_FACTOR_INIT: float = 0.55        # — — initial N availability at sowing
 
+    # ── N leaching & slow-release parameters ──
+    LEACH_RATE: float = 0.35            # fraction of excess-water N lost per cm
+    SLOW_RELEASE_IMMEDIATE: float = 0.70 # fraction of slow-release N applied immediately
+    SLOW_RELEASE_LEACH_FACTOR: float = 0.30  # leaching multiplier (0.30 = 70% resistant)
+
     # ── Grain shattering / spoilage ──
     # Post-maturity grain loss: kernels detach from the ear and
     # moisture + microbial activity reduce grain quality.

@@ -82,6 +82,11 @@ CHECK IN ORDER EACH STEP:
  If in_fert_window=LATE → fertilize NOW before window closes.
  If in_fert_window=YES (hidden tiers) → check advisory for timing hints: "Early in window"→WAIT, "Near optimal"→fertilize, "Late in window"→fertilize.
  Strategy: you have exactly 2 fert slots across 2 windows. Apply a larger dose in window 1, a smaller top-up in window 2.
+ NEW: Two fertilize types:
+  "fertilize" = cheap, full immediate N boost, but N leaches if soil wet or rain coming.
+  "fertilize_slow" = 1.5× cost, resists leaching. Use when rain forecast >0.5cm.
+  Rule: rain3d>0.5 → fertilize_slow. rain3d<0.2 → regular fertilize. Between → judgment call.
+  The advisory will warn you about leaching risk when conditions are wet.
  Dose by nitrogen status (5 bands):
   Tier1: n_avail≥0.9→SKIP(wait), 0.8-0.9→15kg, 0.65-0.8→30kg, 0.5-0.65→45kg, <0.5→50kg
   Tier2/3: "surplus"→SKIP(wait), "adequate"→15kg, "moderate"→30kg, "low"→45kg, "very_low"→50kg
@@ -174,12 +179,15 @@ def compress_observation(obs, prev_action: str | None = None, prev_reward: float
         lines.append(f"Weather forecast: {weather_summary}")
 
     fert_count = cf.fertilizer_events_count if cf else 0
+    slow_release_cost = getattr(ru, "slow_release_cost_per_kg", 0.0)
     lines.append(
         f"Resources: water={ru.total_water_cm:.1f}cm "
         f"N={ru.total_n_kg_ha:.1f}kg "
         f"fert_count={fert_count}/2 "
         f"cost=${ru.total_cost:.1f} "
-        f"remaining=${ru.budget_remaining:.1f}"
+        f"remaining=${ru.budget_remaining:.1f} "
+        f"fert_cost=${ru.fertilizer_cost_per_kg}/kg "
+        f"slow_release_cost=${slow_release_cost}/kg"
     )
 
     # Control features — only show non-sentinel values
@@ -778,23 +786,33 @@ def oracle_action(obs, oracle_state: dict) -> dict:
     if "fert_history" not in oracle_state:
         oracle_state["fert_history"] = []
 
+    # Choose fert type based on 3-day rain forecast
+    def _oracle_fert_type() -> tuple[str, float]:
+        """Returns (action_type, cost_multiplier) based on rain forecast."""
+        rain_3d = sum(f.rain for f in (fc or [])[:3]) if fc else 0.0
+        if rain_3d > 0.5:
+            return "fertilize_slow", 1.5
+        return "fertilize", 1.0
+
     # Stage 1
     if "stage1" not in fert_done and _should_fert_now(FERT_WINDOW_1, FERT_TARGET_DVS_1):
         kg = _fert_kg()
-        if kg > 0 and budget_remaining > fert_cost * kg:
+        fert_type, cost_mult = _oracle_fert_type()
+        if kg > 0 and budget_remaining > fert_cost * kg * cost_mult:
             fert_done.add("stage1")
             oracle_state["pending_fert_kg"] = kg
-            oracle_state["fert_history"].append((obs.day, kg))  # capped inside _fert_kg
-            return {"action_type": "fertilize", "amount": kg}
+            oracle_state["fert_history"].append((obs.day, kg))
+            return {"action_type": fert_type, "amount": kg}
 
     # Stage 2
     if "stage2" not in fert_done and _should_fert_now(FERT_WINDOW_2, FERT_TARGET_DVS_2):
         kg = _fert_kg()
-        if kg > 0 and budget_remaining > fert_cost * kg:
+        fert_type, cost_mult = _oracle_fert_type()
+        if kg > 0 and budget_remaining > fert_cost * kg * cost_mult:
             fert_done.add("stage2")
             oracle_state["pending_fert_kg"] = kg
-            oracle_state["fert_history"].append((obs.day, kg))  # capped inside _fert_kg
-            return {"action_type": "fertilize", "amount": kg}
+            oracle_state["fert_history"].append((obs.day, kg))
+            return {"action_type": fert_type, "amount": kg}
 
     # ── 4. WAIT ────────────────────────────────────────────────────────
     return {"action_type": "wait", "amount": 0.0}

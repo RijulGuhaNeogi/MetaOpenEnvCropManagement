@@ -111,10 +111,12 @@ Pure-Python WOFOST-inspired model (~330 LOC):
 | Water stress | 0.1–1.0 factor, reduces growth when SM < threshold |
 | Heat stress | Pollen sterility >35°C at anthesis; grain fill penalty >32°C |
 | Nitrogen | Linear n_factor model (0.3–1.0), phenology-aware depletion |
+| N Leaching | Wet soil leaches applied N (LEACH_RATE x excess_water); slow-release resists at 0.30x |
+| Slow-release pool | 30% of slow-release N deferred into a 14-day release pool |
 | Partitioning | DVS-dependent table: grain fraction increases post-anthesis |
 | LAI dynamics | Log-linear growth vegetative, senescence post-DVS 1.5 |
 
-**Key method:** `advance(days, irrigation_cm, n_kg_ha)` — advances the model by `days` time-steps, applying interventions. Post-maturity (DVS ≥ 2.0): biomass growth stops (`actual_growth = 0`), but grain shattering continues (`SHATTER_RATE = 0.25/day` above `SHATTER_DVS = 1.85`), causing ~23% yield loss per 7-day step. This natural consequence, combined with the 2-step grace period before auto-termination, teaches the agent that delaying harvest past maturity is costly.
+**Key method:** `advance(days, irrigation_cm, n_kg_ha, slow_release)` — advances the model by `days` time-steps, applying interventions. When `slow_release=True`, 70% of N is applied immediately and 30% enters a slow-release pool that drips over 14 days. Leaching occurs when soil moisture exceeds field capacity: regular fertilizer loses N at `LEACH_RATE`, slow-release at 0.30× that rate. Post-maturity (DVS ≥ 2.0): biomass growth stops (`actual_growth = 0`), but grain shattering continues (`SHATTER_RATE = 0.25/day` above `SHATTER_DVS = 1.85`), causing ~23% yield loss per 7-day step. This natural consequence, combined with the 2-step grace period before auto-termination, teaches the agent that delaying harvest past maturity is costly.
 
 **Data libraries** (module-level dicts, sourced from `server/crop_params.py`):
 - `CROP_LIBRARY` — region-specific WOFOST wheat profiles (wheat_nl, wheat_iowa, wheat_punjab)

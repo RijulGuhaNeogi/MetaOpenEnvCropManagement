@@ -32,6 +32,7 @@ from server.constants import (
     SM_BAND_CRITICAL, SM_BAND_LOW, SM_BAND_ADEQUATE,
     N_VISUAL_VERY_LOW, N_VISUAL_LOW, N_VISUAL_MODERATE, N_VISUAL_ADEQUATE,
     LAI_LOW, LAI_MODERATE,
+    SLOW_RELEASE_COST_MULTIPLIER,
 )
 from server.crop_sim import CropSimulator
 from server.reward import (
@@ -159,7 +160,7 @@ class CropEnvironment(
             amount = 0.0
 
         # Validate action type
-        valid_actions = ("irrigate", "fertilize", "harvest", "wait", "inspect_soil", "inspect_crop")
+        valid_actions = ("irrigate", "fertilize", "fertilize_slow", "harvest", "wait", "inspect_soil", "inspect_crop")
         if action_type not in valid_actions:
             conflicts.append(
                 f"Invalid action_type: '{action.action_type}'. "
@@ -263,6 +264,7 @@ class CropEnvironment(
         cost = 0.0
         irrig_cm = 0.0
         n_kg = 0.0
+        slow_release = False
 
         if action_type == "irrigate":
             amount = min(amount, 10.0)  # Cap at 10 cm per step
@@ -284,9 +286,20 @@ class CropEnvironment(
                 cost = amount * scenario["fertilizer_cost"]
                 n_kg = amount
 
+        elif action_type == "fertilize_slow":
+            amount = min(amount, 50.0)
+            if amount <= 0:
+                conflicts.append("Fertilizer amount must be > 0. Treating as wait.")
+                action_type = "wait"
+                amount = 0.0
+            else:
+                cost = amount * scenario["fertilizer_cost"] * SLOW_RELEASE_COST_MULTIPLIER
+                n_kg = amount
+                slow_release = True
+
         # Budget check
         budget_remaining = self._state.budget - self._state.total_cost
-        if cost > budget_remaining and action_type in ("irrigate", "fertilize"):
+        if cost > budget_remaining and action_type in ("irrigate", "fertilize", "fertilize_slow"):
             conflicts.append(
                 f"Over budget: action costs ${cost:.1f} but only "
                 f"${budget_remaining:.1f} remaining. Treating as wait."
@@ -296,13 +309,14 @@ class CropEnvironment(
             cost = 0.0
             irrig_cm = 0.0
             n_kg = 0.0
+            slow_release = False
 
         # Record action
         record_action_type = inspect_performed if inspect_performed else action_type
         current_day = self._sim.current_day
         if action_type == "irrigate" and irrig_cm > 0.0:
             self._state.last_irrigation_day = current_day
-        elif action_type == "fertilize" and n_kg > 0.0:
+        elif action_type in ("fertilize", "fertilize_slow") and n_kg > 0.0:
             self._state.last_fertilization_day = current_day
             self._state.fertilizer_events_count += 1
 
@@ -397,7 +411,8 @@ class CropEnvironment(
 
         # Advance simulation
         step_days = scenario["step_days"]
-        self._sim.advance(step_days, irrigation_cm=irrig_cm, n_kg_ha=n_kg)
+        self._sim.advance(step_days, irrigation_cm=irrig_cm, n_kg_ha=n_kg,
+                          slow_release=slow_release)
         self._state.total_cost += cost
         self._sync_state()
 
@@ -424,7 +439,7 @@ class CropEnvironment(
 
         # Dose quality feedback for fertilize actions
         dose_hint: str | None = None
-        if action_type == "fertilize" and n_kg > 0:
+        if action_type in ("fertilize", "fertilize_slow") and n_kg > 0:
             n_recov = scenario["crop_params"].N_RECOV
             ideal = min(50.0, max(0.0, 1.0 - pre_n_availability) / max(n_recov, 0.001))
             if ideal > 1.0:
@@ -594,6 +609,8 @@ class CropEnvironment(
         self._state.sm = round(self._sim.sm, 4)
         self._state.total_water_applied = round(self._sim.total_water, 2)
         self._state.total_n_applied = round(self._sim.total_n, 2)
+        self._state.slow_release_pool = round(self._sim.slow_release_pool, 2)
+        self._state.total_n_leached = round(self._sim.total_n_leached, 4)
 
     def _apply_start_state_overrides(self, scenario: dict[str, Any]) -> None:
         if self._sim is None:
@@ -751,6 +768,9 @@ class CropEnvironment(
                 budget_remaining=round(budget_remaining, 2),
                 irrigation_cost_per_cm=scenario["irrigation_cost"],
                 fertilizer_cost_per_kg=scenario["fertilizer_cost"],
+                slow_release_cost_per_kg=round(
+                    scenario["fertilizer_cost"] * SLOW_RELEASE_COST_MULTIPLIER, 2
+                ),
             ),
             season_summary={
                 "crop_name": scenario["crop_name"],

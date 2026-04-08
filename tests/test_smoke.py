@@ -64,7 +64,7 @@ def _wait_only_policy(obs, oracle_state: dict) -> dict:
 
 def _no_fertilizer_policy(obs, oracle_state: dict) -> dict:
     action = oracle_action(obs, oracle_state)
-    if action["action_type"] == "fertilize":
+    if action["action_type"] in ("fertilize", "fertilize_slow"):
         return {"action_type": "wait", "amount": 0.0}
     return action
 
@@ -367,7 +367,7 @@ def test_step_metadata_includes_oracle_action():
     obs = env.step(CropAction(action_type="wait", amount=0.0))
     assert "oracle_action" in obs.metadata
     assert obs.metadata["oracle_action"]["action_type"] in (
-        "wait", "irrigate", "fertilize", "harvest",
+        "wait", "irrigate", "fertilize", "fertilize_slow", "harvest",
     )
     assert isinstance(obs.metadata["oracle_action"]["amount"], float)
 
@@ -413,12 +413,13 @@ def test_all_discrete_actions_map_to_valid_crop_actions():
     """Every discrete action should map cleanly into the public schema."""
     mapped = [discrete_to_crop_action(name) for name in list_discrete_actions()]
 
-    assert len(mapped) == 8
+    assert len(mapped) == 11
     assert {action.action_type for action in mapped} == {
         "wait",
         "harvest",
         "irrigate",
         "fertilize",
+        "fertilize_slow",
     }
 
 
@@ -1112,3 +1113,141 @@ def test_dose_hint_none_on_non_fertilize():
     obs = env.reset(seed=SEED, task_id=1)
     obs = env.step(CropAction(action_type="wait"))
     assert obs.dose_hint is None
+
+
+# -----------------------------------------------------------------------
+# N Leaching & Slow-Release Tests
+# -----------------------------------------------------------------------
+
+
+def test_n_leaching_reduces_n_factor_in_wet_soil():
+    """Apply regular fert at high SM → verify reduced n_gain vs dry soil."""
+    from server.crop_params import WHEAT_NL, SOIL_CLAY_LOAM
+    from server.scenarios import generate_scenario
+
+    # Dry scenario: SM well below field capacity
+    scenario = generate_scenario(SEED, task_id=1)
+    sim_dry = CropSimulator(
+        crop_params=WHEAT_NL,
+        soil_params=SOIL_CLAY_LOAM,
+        weather_data=scenario["weather"],
+    )
+    sim_dry.sm = 0.30  # Below FC (0.43) — dry
+    n_before_dry = sim_dry.n_factor
+    sim_dry.advance(7, n_kg_ha=50.0)
+    n_gain_dry = sim_dry.n_factor - n_before_dry
+
+    # Wet scenario: SM at field capacity
+    sim_wet = CropSimulator(
+        crop_params=WHEAT_NL,
+        soil_params=SOIL_CLAY_LOAM,
+        weather_data=scenario["weather"],
+    )
+    sim_wet.sm = SOIL_CLAY_LOAM.SMFCF + 0.04  # Above FC — wet
+    n_before_wet = sim_wet.n_factor
+    sim_wet.advance(7, n_kg_ha=50.0)
+    n_gain_wet = sim_wet.n_factor - n_before_wet
+
+    # Wet soil should result in less N retained due to leaching
+    assert n_gain_wet < n_gain_dry, (
+        f"Leaching should reduce N gain in wet soil: dry={n_gain_dry:.4f} wet={n_gain_wet:.4f}"
+    )
+
+
+def test_slow_release_resists_leaching():
+    """Same wet conditions, slow_release=True → verify higher n_factor retained."""
+    from server.crop_params import WHEAT_NL, SOIL_CLAY_LOAM
+    from server.scenarios import generate_scenario
+
+    scenario = generate_scenario(SEED, task_id=1)
+
+    # Regular fert in wet soil
+    sim_regular = CropSimulator(
+        crop_params=WHEAT_NL,
+        soil_params=SOIL_CLAY_LOAM,
+        weather_data=scenario["weather"],
+    )
+    sim_regular.sm = SOIL_CLAY_LOAM.SMFCF + 0.04
+    n_before = sim_regular.n_factor
+    sim_regular.advance(7, n_kg_ha=50.0, slow_release=False)
+    n_gain_regular = sim_regular.n_factor - n_before
+
+    # Slow-release fert in wet soil
+    sim_slow = CropSimulator(
+        crop_params=WHEAT_NL,
+        soil_params=SOIL_CLAY_LOAM,
+        weather_data=scenario["weather"],
+    )
+    sim_slow.sm = SOIL_CLAY_LOAM.SMFCF + 0.04
+    n_before = sim_slow.n_factor
+    sim_slow.advance(7, n_kg_ha=50.0, slow_release=True)
+    # Include pool that will release over time
+    n_gain_slow = sim_slow.n_factor - n_before
+
+    # Slow-release should retain more N (less leaching) even though
+    # immediate injection is only 70%
+    assert sim_slow.total_n_leached < sim_regular.total_n_leached, (
+        f"Slow-release should leach less: regular={sim_regular.total_n_leached:.4f} "
+        f"slow={sim_slow.total_n_leached:.4f}"
+    )
+
+
+def test_slow_release_costs_more():
+    """Step with fertilize_slow → verify cost = 1.5× fertilizer_cost_per_kg."""
+    env = CropEnvironment()
+    obs = env.reset(seed=SEED, task_id=1)
+    # Advance to fert window
+    while obs.crop_status.dvs < 0.25 and not obs.done:
+        obs = env.step(CropAction(action_type="wait"))
+    if obs.done:
+        return
+    cost_before = obs.resources_used.total_cost
+    fert_cost_per_kg = obs.resources_used.fertilizer_cost_per_kg
+    obs = env.step(CropAction(action_type="fertilize_slow", amount=30.0))
+    cost_after = obs.resources_used.total_cost
+    expected_cost = 30.0 * fert_cost_per_kg * 1.5
+    assert cost_after - cost_before == pytest.approx(expected_cost, rel=0.01), (
+        f"Slow-release cost should be 1.5×: expected {expected_cost}, "
+        f"got {cost_after - cost_before}"
+    )
+
+
+def test_slow_release_pool_drains_gradually():
+    """Apply slow-release → advance 2 steps → verify pool decreases and n_factor rises."""
+    from server.crop_params import WHEAT_NL, SOIL_CLAY_LOAM
+    from server.scenarios import generate_scenario
+
+    scenario = generate_scenario(SEED, task_id=1)
+    sim = CropSimulator(
+        crop_params=WHEAT_NL,
+        soil_params=SOIL_CLAY_LOAM,
+        weather_data=scenario["weather"],
+    )
+    sim.sm = 0.30  # Dry — no leaching
+    sim.advance(7, n_kg_ha=50.0, slow_release=True)
+    pool_after_1 = sim.slow_release_pool
+    assert pool_after_1 > 0, "Slow-release pool should be non-zero after application"
+
+    n_after_1 = sim.n_factor
+    sim.advance(7)  # Just wait — pool should continue releasing
+    pool_after_2 = sim.slow_release_pool
+    assert pool_after_2 < pool_after_1, (
+        f"Pool should decrease over time: step1={pool_after_1:.4f} step2={pool_after_2:.4f}"
+    )
+
+
+def test_fertilize_slow_valid_action():
+    """Step with fertilize_slow → no error → fert_events_count increments."""
+    env = CropEnvironment()
+    obs = env.reset(seed=SEED, task_id=1)
+    # Advance to fert window
+    while obs.crop_status.dvs < 0.25 and not obs.done:
+        obs = env.step(CropAction(action_type="wait"))
+    if obs.done:
+        return
+    fert_count_before = obs.control_features.fertilizer_events_count
+    obs = env.step(CropAction(action_type="fertilize_slow", amount=30.0))
+    assert not any("Invalid" in c for c in obs.conflicts), (
+        f"fertilize_slow should be a valid action, got conflicts: {obs.conflicts}"
+    )
+    assert obs.control_features.fertilizer_events_count == fert_count_before + 1

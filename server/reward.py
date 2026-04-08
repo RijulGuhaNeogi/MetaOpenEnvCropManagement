@@ -26,6 +26,7 @@ from server.constants import (
     FERT_WINDOW_2,
     HARVEST_DVS_HIGH,
     HARVEST_DVS_LOW,
+    LEACH_RAIN_THRESHOLD,
     MAX_WATER_CM,
     SM_TARGET_HIGH,
     SM_TARGET_LOW,
@@ -147,7 +148,7 @@ def compute_step_reward(
         reward -= forecast_penalty + overshoot_penalty + water_pressure
         return _clamp(reward, -0.12, 0.14)
 
-    elif action_type == "fertilize":
+    elif action_type in ("fertilize", "fertilize_slow"):
         # Hard penalty for exceeding the 2-application cap
         if fert_events_count > 2:
             return _clamp(-0.06 - 0.001 * amount, -0.14, -0.04)
@@ -165,6 +166,14 @@ def compute_step_reward(
             season_excess = max(0.0, projected_total_n - 55.0)
             excess_penalty = min(0.14, season_excess / 30.0 * 0.14)
             reward = window_bonus * fit_score * timing_multiplier - excess_penalty
+
+            # Weather-awareness bonus/penalty for fert type choice
+            is_slow = (action_type == "fertilize_slow")
+            if forecast_rain > LEACH_RAIN_THRESHOLD:
+                reward += 0.02 if is_slow else -0.03   # wet: slow-release correct
+            elif forecast_rain < 0.2:
+                reward += 0.01 if not is_slow else -0.02  # dry: regular correct
+
             return _clamp(reward, -0.10, 0.16)
         elif dvs < 0.20:
             return -0.01  # Slightly wasteful: too early to matter much
@@ -256,7 +265,7 @@ def compute_delta_reward(
         )
         return _clamp(reward, -0.15, 0.15)
 
-    if action_type == "fertilize":
+    if action_type == "fertilize" or action_type == "fertilize_slow":
         n_gain = post_n_availability - pre_n_availability
         inefficiency_penalty = 0.02 if n_gain < 0.01 else 0.0
         # Only credit yield progress when the primary effect is positive

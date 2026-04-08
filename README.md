@@ -47,6 +47,7 @@ The WOFOST-inspired crop growth simulator captures real agricultural dynamics: t
 | **Crop vigor gating** | Delta rewards scale with `crop_vigor = f(twso / target)` — late-season efficiency actions on a failing crop get diminished credit, mirroring the grader |
 | **Explicit harvest incentive** | Agent-initiated harvest gets full timing credit; auto-harvest gets only 20% (0.2× penalty) — agents must learn *when* to stop |
 | **Natural consequences** | Grain shattering (~23% yield loss per 7-day step past DVS 1.85) provides a physics-based penalty for harvest delay, not an arbitrary rule |
+| **N leaching & slow-release** | Wet soil leaches applied N; `fertilize_slow` (1.5× cost) resists leaching — agents must read weather forecasts to pick the right fertilizer type |
 | **Information-action tradeoff** | Inspect actions reveal hidden state but cost budget; economically dominated by real actions so they can't be spammed for free reward |
 | **Deterministic everywhere** | Same seed → identical weather, growth, grading, rewards, forecasts. Full reproducibility for debugging and benchmarking |
 | **Region-calibrated stress** | Punjab has lower heat thresholds (34°C/31°C vs 35°C/32°C), faster N depletion, and sandy soil — difficulty is agronomically grounded |
@@ -112,8 +113,8 @@ The three tasks form a natural **reasoning curriculum** — not just a difficult
 
 | Field | Type | Values | Description |
 |-------|------|--------|-------------|
-| `action_type` | str | `irrigate`, `fertilize`, `harvest`, `wait`, `inspect_soil`, `inspect_crop` | Weekly management decision |
-| `amount` | float | 0-10 cm (irrigate), 0-50 kg N/ha (fertilize), 0 (others) | Resource amount |
+| `action_type` | str | `irrigate`, `fertilize`, `fertilize_slow`, `harvest`, `wait`, `inspect_soil`, `inspect_crop` | Weekly management decision |
+| `amount` | float | 0-10 cm (irrigate), 0-50 kg N/ha (fertilize/fertilize_slow), 0 (others) | Resource amount |
 
 **Inspect actions:** `inspect_soil` ($10) reveals exact soil moisture, nitrogen, and water stress. `inspect_crop` ($20) reveals exact DVS, LAI, biomass, and grain weight. Inspects are **free sub-actions** — they cost budget but do **not** advance the simulation or consume a week. The agent gets results immediately and can take a real action on the next call within the same logical step. Budget is the only constraint on inspects (no artificial cap). Results **persist** in all subsequent observations as `soil_report` / `crop_report`. Available on all tiers, but most valuable on Tier 2/3 where numeric readings are hidden.
 
@@ -562,7 +563,7 @@ This environment is designed to produce a **learnable reward landscape**, not ju
 - **Curriculum-ready:** The 3 tasks form a natural curriculum: Tier 1 (full state, generous budget) → Tier 2 (hidden state, moderate budget) → Tier 3 (minimal state, tight budget). Agents can train on easy tasks first and transfer.
 - **Consistent constants:** All threshold values (harvest DVS, fertilizer windows, SM targets) are centralized in `server/constants.py` and verified consistent across reward, grader, and environment modules. No hidden misalignments.
 - **Trajectory export:** `TRAJECTORY_OUTPUT` env var enables JSONL export with `(observation, action, reward, next_observation, done, metadata)` tuples for offline RL / imitation learning.
-- **Training adapter:** `agent/training_adapter.py` provides an 8-action discrete mapping (`wait`, `harvest`, `irrigate_small/medium/large`, `fertilize_small/medium/large`) for standard RL frameworks.
+- **Training adapter:** `agent/training_adapter.py` provides an 11-action discrete mapping (`wait`, `harvest`, `irrigate_small/medium/large`, `fertilize_small/medium/large`, `fertilize_slow_small/medium/large`) for standard RL frameworks.
 
 ---
 
@@ -584,9 +585,9 @@ Activate via `reset(..., probe_name="harvest_hesitation")`. Probes share the sam
 
 ### Discrete Action Adapter
 
-`agent/training_adapter.py` provides an 8-action discrete mapping for standard RL frameworks:
+`agent/training_adapter.py` provides an 11-action discrete mapping for standard RL frameworks:
 
-`wait` · `harvest` · `irrigate_small` · `irrigate_medium` · `irrigate_large` · `fertilize_small` · `fertilize_medium` · `fertilize_large`
+`wait` · `harvest` · `irrigate_small` · `irrigate_medium` · `irrigate_large` · `fertilize_small` · `fertilize_medium` · `fertilize_large` · `fertilize_slow_small` · `fertilize_slow_medium` · `fertilize_slow_large`
 
 The public OpenEnv action schema remains `action_type + amount`.
 
@@ -602,6 +603,8 @@ The simulator implements key dynamics from the WOFOST (World Food Studies) model
 - **Water stress:** Reduces growth when soil moisture drops below threshold
 - **Heat stress:** Two separate mechanisms — pollen sterility during flowering (DVS 0.8–1.2, triggered >35°C) and kernel weight reduction during grain-fill (DVS 1.0–1.5, triggered >32°C). Punjab uses **lower thresholds** (34°C/31°C) for region-realistic heat sensitivity.
 - **Nitrogen response:** Fertilization increases the N-factor (0.3→1.0) with intentionally low recovery (0.008 per kg applied) — timing matters more than volume. Depletion is phenology-aware: slow pre-anthesis (0.0003/day), fast post-anthesis (0.0015/day; Punjab: 0.0020/day).
+- **N leaching:** When fertilizer is applied and soil is wet (near field capacity) or rain falls, a fraction of applied N washes below the root zone. Regular fertilizer loses 15–40% in wet conditions.
+- **Slow-release fertilizer:** `fertilize_slow` costs 1.5× base rate but resists leaching (70% resistant). Delivers 70% of N immediately, with the remaining 30% dripping in over 14 days. The agent must decide: cheap regular fert in dry weather, or expensive slow-release when rain is coming.
 - **Partitioning:** DVS-dependent allocation to storage organs (grain yield)
 - **Senescence:** Realistic LAI decline after DVS > 1.5 (~7-10 day period)
 

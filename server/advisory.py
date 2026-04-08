@@ -165,6 +165,12 @@ def generate_advisory(
                 parts.append("Nitrogen is surplus.")
         if tier >= 2 and fert_count == 0 and budget_remaining >= 10:
             parts.append("Consider inspect_soil ($10) to check exact nitrogen level.")
+        # Leaching risk + slow-release hint
+        if sm > field_capacity - 0.03 or forecast_rain_3d > 0.5:
+            parts.append("\u26a0 Leaching risk: soil is wet or rain expected. "
+                         "Consider slow-release fertilizer (fertilize_slow) to protect N.")
+        else:
+            parts.append("Low leaching risk \u2014 regular fertilizer is cost-effective.")
     elif 0.50 <= dvs <= 0.70:
         if tier == 1:
             parts.append(f"Crop is in the second fertilization window (DVS 0.50-0.70, target 0.60, currently {dvs:.2f}).")
@@ -199,6 +205,12 @@ def generate_advisory(
                 parts.append("Nitrogen is adequate.")
             else:
                 parts.append("Nitrogen is surplus.")
+        # Leaching risk + slow-release hint
+        if sm > field_capacity - 0.03 or forecast_rain_3d > 0.5:
+            parts.append("\u26a0 Leaching risk: soil is wet or rain expected. "
+                         "Consider slow-release fertilizer (fertilize_slow) to protect N.")
+        else:
+            parts.append("Low leaching risk \u2014 regular fertilizer is cost-effective.")
     elif 0.15 <= dvs < 0.20:
         parts.append("First fertilization window approaching soon.")
     elif 0.42 <= dvs < 0.50:
