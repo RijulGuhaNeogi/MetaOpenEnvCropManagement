@@ -85,7 +85,7 @@ def grade_episode(
     # Reward fertilizing near DVS 0.3 and DVS 0.6 (key growth stages)
     # ---------------------------------------------------------------
     fert_actions = [
-        a for a in actions_taken if a.get("action_type") == "fertilize"
+        a for a in actions_taken if a.get("action_type") in ("fertilize", "fertilize_slow")
     ]
     if fert_actions:
         timing_scores = []

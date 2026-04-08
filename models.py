@@ -24,7 +24,7 @@ from openenv.core.env_server.types import Action, Observation, State
 class CropAction(Action):
     """Weekly management decision sent by the agent.
 
-    action_type: one of 'irrigate', 'fertilize', 'harvest', 'wait',
+    action_type: one of 'irrigate', 'fertilize', 'fertilize_slow', 'harvest', 'wait',
                  'inspect_soil', 'inspect_crop'
     amount:      cm of water (irrigate) or kg N/ha (fertilize); 0 for others
     """
@@ -64,6 +64,7 @@ class ResourcesUsed(BaseModel):
     budget_remaining: float = 0.0
     irrigation_cost_per_cm: float = 0.0
     fertilizer_cost_per_kg: float = 0.0
+    slow_release_cost_per_kg: float = 0.0
 
 
 class ControlFeatures(BaseModel):
@@ -177,3 +178,5 @@ class CropState(State):
     maturity_reached_step: Optional[int] = None  # Step when DVS first hit 2.0
     last_soil_report: Optional[str] = None  # Persisted across steps
     last_crop_report: Optional[str] = None  # Persisted across steps
+    slow_release_pool: float = 0.0          # Pending slow-release N (kg/ha)
+    total_n_leached: float = 0.0            # Cumulative N lost to leaching

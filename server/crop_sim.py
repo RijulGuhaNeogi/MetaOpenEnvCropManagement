@@ -108,6 +108,10 @@ class CropSimulator:
         self.n_factor: float = crop_params.N_FACTOR_INIT  # Nitrogen availability [0–1]
         self.total_water: float = 0.0                   # Cumulative irrigation (cm)
         self.total_n: float = 0.0                       # Cumulative N applied (kg ha⁻¹)
+        self.slow_release_pool: float = 0.0             # Pending slow-release N (kg/ha)
+        self.total_n_leached: float = 0.0               # Cumulative N lost to leaching
+        self._n_applied_this_advance: float = 0.0       # For leaching calc within advance
+        self._slow_release_this_advance: bool = False
 
     def get_weather(self, day: int) -> dict:
         if 0 <= day < len(self.weather):
@@ -166,16 +170,30 @@ class CropSimulator:
 
         return heat_factor
 
-    def advance(self, days: int, irrigation_cm: float = 0.0, n_kg_ha: float = 0.0):
+    def advance(self, days: int, irrigation_cm: float = 0.0, n_kg_ha: float = 0.0,
+                 slow_release: bool = False):
         """Advance the simulation by *days* with optional interventions."""
         if days <= 0:
             raise ValueError(f"advance() requires days > 0, got {days}")
 
         # Nitrogen injection [Shibu et al. 2010, simplified linear recovery]
         if n_kg_ha > 0:
-            increase = n_kg_ha * self.crop.N_RECOV   # N_RECOV ≈ 0.008
-            self.n_factor = min(1.0, self.n_factor + increase)
+            if slow_release:
+                immediate_frac = self.crop.SLOW_RELEASE_IMMEDIATE  # 0.70
+                immediate_kg = n_kg_ha * immediate_frac
+                deferred_kg = n_kg_ha - immediate_kg
+                increase = immediate_kg * self.crop.N_RECOV
+                self.n_factor = min(1.0, self.n_factor + increase)
+                self.slow_release_pool += deferred_kg
+            else:
+                increase = n_kg_ha * self.crop.N_RECOV
+                self.n_factor = min(1.0, self.n_factor + increase)
             self.total_n += n_kg_ha
+            self._n_applied_this_advance = n_kg_ha
+            self._slow_release_this_advance = slow_release
+        else:
+            self._n_applied_this_advance = 0.0
+            self._slow_release_this_advance = False
 
         # Spread irrigation evenly across the period
         daily_irrig = irrigation_cm / days
@@ -183,6 +201,9 @@ class CropSimulator:
 
         for _ in range(days):
             self._simulate_day(daily_irrig)
+
+        # Reset per-advance tracking after the loop
+        self._n_applied_this_advance = 0.0
 
     def _simulate_day(self, irrigation_cm: float):
         """Simulate one day of crop growth.
@@ -213,6 +234,23 @@ class CropSimulator:
         self.sm += delta_sm
         self.sm = max(self.soil.SMW,
                       min(self.soil.SMFCF + 0.05, self.sm))
+
+        # ── N leaching: if recently fertilized and soil is wet ──
+        if self._n_applied_this_advance > 0:
+            excess_water = max(0.0, self.sm - self.soil.SMFCF)
+            if excess_water > 0.01:
+                leach_factor = (self.crop.SLOW_RELEASE_LEACH_FACTOR
+                                if self._slow_release_this_advance else 1.0)
+                n_lost = excess_water * self.crop.LEACH_RATE * leach_factor * 0.01
+                self.n_factor = max(self.crop.N_FACTOR_FLOOR,
+                                    self.n_factor - n_lost)
+                self.total_n_leached += n_lost
+
+        # ── Slow-release daily drip (pool releases over ~14 days) ──
+        if self.slow_release_pool > 0:
+            daily_release = self.slow_release_pool / 14.0
+            self.n_factor = min(1.0, self.n_factor + daily_release * self.crop.N_RECOV)
+            self.slow_release_pool = max(0.0, self.slow_release_pool - daily_release)
 
         # ── Stress factors ──
         water_stress = self._water_stress()            # [Feddes et al. 1978]

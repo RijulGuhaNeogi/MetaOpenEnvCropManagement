@@ -111,10 +111,12 @@ Pure-Python WOFOST-inspired model (~330 LOC):
 | Water stress | 0.1–1.0 factor, reduces growth when SM < threshold |
 | Heat stress | Pollen sterility >35°C at anthesis; grain fill penalty >32°C |
 | Nitrogen | Linear n_factor model (0.3–1.0), phenology-aware depletion |
+| N Leaching | Wet soil leaches applied N (LEACH_RATE x excess_water); slow-release resists at 0.30x |
+| Slow-release pool | 30% of slow-release N deferred into a 14-day release pool |
 | Partitioning | DVS-dependent table: grain fraction increases post-anthesis |
 | LAI dynamics | Log-linear growth vegetative, senescence post-DVS 1.5 |
 
-**Key method:** `advance(days, irrigation_cm, n_kg_ha)` — advances the model by `days` time-steps, applying interventions. Post-maturity (DVS ≥ 2.0): biomass growth stops (`actual_growth = 0`), but grain shattering continues (`SHATTER_RATE = 0.25/day` above `SHATTER_DVS = 1.85`), causing ~23% yield loss per 7-day step. This natural consequence, combined with the 2-step grace period before auto-termination, teaches the agent that delaying harvest past maturity is costly.
+**Key method:** `advance(days, irrigation_cm, n_kg_ha, slow_release)` — advances the model by `days` time-steps, applying interventions. When `slow_release=True`, 70% of N is applied immediately and 30% enters a slow-release pool that drips over 14 days. Leaching occurs when soil moisture exceeds field capacity: regular fertilizer loses N at `LEACH_RATE`, slow-release at 0.30× that rate. Post-maturity (DVS ≥ 2.0): biomass growth stops (`actual_growth = 0`), but grain shattering continues (`SHATTER_RATE = 0.25/day` above `SHATTER_DVS = 1.85`), causing ~23% yield loss per 7-day step. This natural consequence, combined with the 2-step grace period before auto-termination, teaches the agent that delaying harvest past maturity is costly.
 
 **Data libraries** (module-level dicts, sourced from `server/crop_params.py`):
 - `CROP_LIBRARY` — region-specific WOFOST wheat profiles (wheat_nl, wheat_iowa, wheat_punjab)
@@ -210,6 +212,7 @@ Terminal reward blend: `0.7 × trajectory_reward + 0.3 × normalized_harvest_ste
 - Fertilizer dose curve steepened (divisor halved) for sharper dose sensitivity
 - Delta yield-signal suppressed when the primary action effect is negative (prevents credit for passive yield growth during harmful actions)
 - Wait delta rain-luck confound halved (0.3→0.15 coefficient)
+- Fertilizer type awareness: +0.02 reward for slow-release in wet conditions (rain₃d > 0.5cm), −0.03 for regular in wet; +0.01 for regular in dry, −0.02 for slow-release in dry — a subtle signal requiring weather-conditional reasoning
 
 ### 3.9 Client — `client.py`
 
@@ -249,6 +252,15 @@ tier. It serves as the upper-bound reference trajectory.
    - Waits for the step with DVS closest to target (0.30 / 0.60)
    - Computes exact N amount to fill n_factor to 1.0 (respects 50 kg/ha per-step cap)
 6. **Wait** otherwise
+
+**Weather-aware fertilizer type selection:**
+The oracle implements a rain-contingent fertilizer choice via `_oracle_fert_type()`:
+- `forecast_rain_3d > 0.5cm` → `"fertilize_slow"` (leach-resistant, 1.5× cost)
+- Otherwise → `"fertilize"` (cheap, full immediate N)
+
+This encodes the core economic tradeoff the environment is designed to test: when rain is forecast, the ~70% leaching resistance of slow-release outweighs its cost premium. The greedy heuristic always uses regular fertilizer (intentionally — it degrades when rain causes leaching). An LLM agent must discover this tradeoff from the advisory text and weather forecast — it is never stated as a rule.
+
+**Why this challenges frontier LLMs:** The decision requires jointly reasoning over forecast magnitude, soil moisture, crop growth stage, remaining budget, and N availability. There is no single threshold that always works — borderline cases (rain₃d ≈ 0.3–0.5cm) require genuine cost-benefit estimation. The reward system reinforces correct choices (+0.02 for slow-release in rain, −0.03 for regular in rain) but the signal is subtle enough that only agents with strong causal reasoning exploit it consistently.
 
 **Oracle reference in metadata:**
 At each non-terminal step, the environment calls the perfect-information oracle

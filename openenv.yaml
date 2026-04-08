@@ -3,7 +3,7 @@ version: "0.1.0"
 description: >
   Precision agriculture crop management environment with partial observability.
   An LLM agent manages a wheat growing season — deciding when to irrigate,
-  fertilize, harvest, inspect, or wait to maximize yield while minimizing water
+  fertilize (regular or slow-release), harvest, inspect, or wait to maximize yield while minimizing water
   use and cost. Tasks progress from full numeric observability (Tier 1) through
   coarsened bands and NL weather (Tier 2) to bucketed weather with most sensors
   hidden (Tier 3). Two inspect actions reveal exact sensor readings at a budget

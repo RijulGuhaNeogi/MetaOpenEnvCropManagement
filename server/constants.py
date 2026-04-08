@@ -18,6 +18,8 @@ FERT_MAX_KG_PER_STEP = 50.0         # Environment cap on kg N/ha per step
 DEFAULT_N_RECOV = 0.008             # Default N recovery factor (kg factor⁻¹)
 FERT_HEURISTIC_OFFSET = 0.07       # Greedy heuristic shifts window start to avoid
                                     # applying right at window boundary
+SLOW_RELEASE_COST_MULTIPLIER = 1.5  # slow-release fertilizer costs 1.5× base rate
+LEACH_RAIN_THRESHOLD = 0.5          # cm rain in 3d above which leaching risk is high
 
 # ---------------------------------------------------------------------------
 # Soil moisture thresholds

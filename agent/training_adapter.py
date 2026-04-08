@@ -17,6 +17,9 @@ DISCRETE_ACTION_MAP: dict[str, tuple[str, float]] = {
     "fertilize_small": ("fertilize", 15.0),
     "fertilize_medium": ("fertilize", 30.0),
     "fertilize_large": ("fertilize", 50.0),
+    "fertilize_slow_small": ("fertilize_slow", 15.0),
+    "fertilize_slow_medium": ("fertilize_slow", 30.0),
+    "fertilize_slow_large": ("fertilize_slow", 50.0),
 }
 
 
