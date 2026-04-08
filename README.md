@@ -100,6 +100,23 @@ The three tasks form a natural **reasoning curriculum** — not just a difficult
 - Scoring weights yield (35%), water efficiency (20%), cost efficiency (18%), timing (15%), and harvest timing (12%) — no single strategy dominates
 - An LLM agent that strategically inspects and reasons over NL observations can outperform the greedy heuristic, which operates blindly on midpoint estimates
 
+### Why This Environment Challenges Even Frontier LLMs
+
+Beyond observability tiers, the environment embeds a **weather-contingent economic tradeoff** that requires multi-step causal reasoning — not pattern matching:
+
+| | Dry forecast (rain₃d < 0.2cm) | Wet forecast (rain₃d > 0.5cm) |
+|---|---|---|
+| **Regular `fertilize`** | ✅ Cheap, full N uptake | ❌ N leaches out of root zone — wasted money and lost yield |
+| **Slow-release `fertilize_slow`** | ❌ Paying 1.5× for protection you don't need | ✅ 70% leach-resistant — N retained through the rain event |
+
+The agent must **read the 3-day rain forecast, estimate leaching risk, weigh the 1.5× cost premium against expected N loss, and choose the correct fertilizer type** — all within a tight budget. The advisory warns about leaching risk but never prescribes an action.
+
+**Why this separates frontier from weak LLMs:**
+- A greedy heuristic always picks cheap regular fertilizer → loses N in wet weather → yield drops
+- A weak LLM may learn "rain → slow-release" but overapplies it in borderline cases, wasting budget
+- A frontier LLM must reason about **forecast magnitude vs cost vs remaining budget vs crop growth stage** — a 4-variable conditional decision with no single threshold that always works
+- The oracle achieves ~0.94 on Task 1; a strong LLM (Llama 3.3 70B) scores ~0.82 — the remaining 12-point gap requires precisely this kind of economic reasoning under uncertainty
+
 ---
 
 ## Action Space

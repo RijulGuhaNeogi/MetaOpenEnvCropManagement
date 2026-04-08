@@ -212,6 +212,7 @@ Terminal reward blend: `0.7 × trajectory_reward + 0.3 × normalized_harvest_ste
 - Fertilizer dose curve steepened (divisor halved) for sharper dose sensitivity
 - Delta yield-signal suppressed when the primary action effect is negative (prevents credit for passive yield growth during harmful actions)
 - Wait delta rain-luck confound halved (0.3→0.15 coefficient)
+- Fertilizer type awareness: +0.02 reward for slow-release in wet conditions (rain₃d > 0.5cm), −0.03 for regular in wet; +0.01 for regular in dry, −0.02 for slow-release in dry — a subtle signal requiring weather-conditional reasoning
 
 ### 3.9 Client — `client.py`
 
@@ -251,6 +252,15 @@ tier. It serves as the upper-bound reference trajectory.
    - Waits for the step with DVS closest to target (0.30 / 0.60)
    - Computes exact N amount to fill n_factor to 1.0 (respects 50 kg/ha per-step cap)
 6. **Wait** otherwise
+
+**Weather-aware fertilizer type selection:**
+The oracle implements a rain-contingent fertilizer choice via `_oracle_fert_type()`:
+- `forecast_rain_3d > 0.5cm` → `"fertilize_slow"` (leach-resistant, 1.5× cost)
+- Otherwise → `"fertilize"` (cheap, full immediate N)
+
+This encodes the core economic tradeoff the environment is designed to test: when rain is forecast, the ~70% leaching resistance of slow-release outweighs its cost premium. The greedy heuristic always uses regular fertilizer (intentionally — it degrades when rain causes leaching). An LLM agent must discover this tradeoff from the advisory text and weather forecast — it is never stated as a rule.
+
+**Why this challenges frontier LLMs:** The decision requires jointly reasoning over forecast magnitude, soil moisture, crop growth stage, remaining budget, and N availability. There is no single threshold that always works — borderline cases (rain₃d ≈ 0.3–0.5cm) require genuine cost-benefit estimation. The reward system reinforces correct choices (+0.02 for slow-release in rain, −0.03 for regular in rain) but the signal is subtle enough that only agents with strong causal reasoning exploit it consistently.
 
 **Oracle reference in metadata:**
 At each non-terminal step, the environment calls the perfect-information oracle
