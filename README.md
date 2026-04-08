@@ -14,9 +14,9 @@ tags:
 # Precision Agriculture Crop Management — OpenEnv
 
 > **Meta PyTorch OpenEnv Hackathon — Round 1 Submission**
-> **Team Hijibiji** — Roudraneel, Rijul, Tirthajoti
+> **Team Hijibiji** 
 
-A deterministic, multi-step precision agriculture environment built on the [OpenEnv](https://github.com/meta-pytorch/OpenEnv) framework. An AI agent manages a wheat growing season — deciding weekly when to irrigate, fertilize, and harvest to maximize yield while minimizing water use and cost.
+A deterministic, multi-step precision agriculture environment built on the [OpenEnv](https://github.com/meta-pytorch/OpenEnv) framework. An AI agent manages a wheat growing season — deciding weekly when to irrigate, fertilize, and harvest to maximize yield while minimizing water use and cost while negotiating leaching .
 
 The current environment is optimized for both public-task grading quality and RL learnability: dense rewards are post-transition aware, observations include policy-native control features, and internal probe scenarios exist for diagnosing reward/behavior failures without changing the public tasks.
 
