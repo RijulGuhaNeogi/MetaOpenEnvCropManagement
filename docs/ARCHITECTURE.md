@@ -198,11 +198,11 @@ Three-tier reward architecture:
 
 | Tier | Function | Range | When |
 |------|----------|-------|------|
-| **Intent** | `compute_step_reward()` | [−0.3, +0.2] | Before advancing sim |
-| **Delta** | `compute_delta_reward()` | [−0.15, +0.15] | After advancing sim |
+| **Intent** | `compute_step_reward()` → `(float, dict)` | Wait: [−0.15, +0.04]; Fert: [−0.14, +0.16]; Harvest: [−0.30, +0.25] | Before advancing sim |
+| **Delta** | `compute_delta_reward()` → `(float, dict)` | [−0.10, +0.06] | After advancing sim |
 | **Trajectory** | `compute_trajectory_reward()` | [0.0, 1.0] | At episode end (= final grade, blended with harvest step signal) |
 
-Step reward blend: `0.4 × intent + 0.6 × delta`, clamped to [`STEP_REWARD_MIN`, `STEP_REWARD_MAX`] (default [−0.9, +0.9]).
+Step reward blend: `STEP_REWARD_SCALE × (0.4 × intent + 0.6 × delta)`, where `STEP_REWARD_SCALE = 2.0`, then clamped to [`STEP_REWARD_MIN`, `STEP_REWARD_MAX`] (default [−0.9, +0.9]).
 
 Terminal reward blend: `0.7 × trajectory_reward + 0.3 × normalized_harvest_step_signal` — gives immediate credit for good harvest timing at the terminal step. Auto-termination (non-explicit harvest) applies a 0.5× multiplier on the harvest-timing component.
 
@@ -298,7 +298,7 @@ actions receive maximum reward:
   `n_availability` and `N_RECOV` (how much N to fill n_factor to 1.0, capped
   at 50 kg/ha) — matching the oracle's calculation exactly.
 - **Fertilizer timing:** Rewards peak at DVS 0.30 and 0.60 (the oracle's targets).
-- **Harvest:** +0.20 reward in the [1.80, 2.00] DVS window.
+- **Harvest:** +0.20–+0.25 reward in the [1.80, 2.00] DVS window (sweet-spot bonus peaks at DVS ≈ 1.90).
 - **Irrigation:** Rewards proportional to soil moisture deficit relief.
 - **Advisory text:** Provides contextual hints (fertilizer window status, soil
   moisture vs optimal range, harvest readiness) without prescribing actions.
@@ -364,7 +364,7 @@ CropEnvironment.step(action)
   │     └── partitioning → grain yield
   ├── compute_delta_reward(before, after)  ← Delta reward AFTER
   │     reward.py
-  ├── step_reward = 0.4 × intent + 0.6 × delta
+  ├── step_reward = 2.0 × (0.4 × intent + 0.6 × delta)
   ├── Check termination:
   │     ├── harvest action → grade_episode() → blend 0.7×traj + 0.3×harvest_signal → terminal
   │     ├── 2 steps after DVS first hits 2.0 → auto-harvest (with shattering) → terminal

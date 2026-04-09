@@ -54,6 +54,8 @@ class SoilStatus(BaseModel):
     n_availability: float = 0.0
     field_capacity: float = 0.0
     wilting_point: float = 0.0
+    n_leached: float | None = None
+    slow_release_pool: float | None = None
 
 
 class ResourcesUsed(BaseModel):

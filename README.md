@@ -574,7 +574,7 @@ Those tradeoffs are intentional. The benchmark is optimized for deterministic ev
 This environment is designed to produce a **learnable reward landscape**, not just a grading function:
 
 - **Reward–grader alignment:** Step-level intent and delta rewards are calibrated to push the same behavior the terminal grader scores. An agent that maximizes cumulative step reward will also score well on the final rubric.
-- **Shaped, not sparse:** Every action type produces a non-zero reward signal. Wait is always ≤ 0; irrigate and fertilize range from −0.14 to +0.16 depending on timing and dose quality; harvest yields +0.20 at optimal DVS. No action is reward-silent.
+- **Shaped, not sparse:** Every action type produces a non-zero reward signal. Wait ranges from −0.15 to +0.04 (includes patience bonus for correct inaction); irrigate and fertilize range from −0.14 to +0.16 depending on timing and dose quality; harvest yields +0.20–+0.25 at optimal DVS (sweet-spot bonus). No action is reward-silent.
 - **Smooth gradients:** Fertilize reward peaks sharply at target DVS (0.30, 0.60) with linear decay — the agent gets a clear gradient toward optimal timing. Irrigation reward scales with dose accuracy and soil dryness — the agent learns precise amounts, not just thresholds.
 - **Multi-signal terminal:** The final reward blends 70% trajectory grade (5 rubric metrics) with 30% harvest-timing signal, giving both cumulative and pointwise feedback at episode end.
 - **Curriculum-ready:** The 3 tasks form a natural curriculum: Tier 1 (full state, generous budget) → Tier 2 (hidden state, moderate budget) → Tier 3 (minimal state, tight budget). Agents can train on easy tasks first and transfer.

@@ -27,7 +27,7 @@ from models import ControlFeatures, CropStatus, ResourcesUsed, SoilStatus, Weath
 from server.advisory import generate_advisory, generate_soil_report, generate_crop_report, weather_to_nl
 from server.constants import (
     MAX_STEPS, REWARD_DELTA_WEIGHT, REWARD_INTENT_WEIGHT,
-    STEP_REWARD_MIN, STEP_REWARD_MAX,
+    STEP_REWARD_MIN, STEP_REWARD_MAX, STEP_REWARD_SCALE,
     INSPECT_SOIL_COST, INSPECT_CROP_COST,
     SM_BAND_CRITICAL, SM_BAND_LOW, SM_BAND_ADEQUATE,
     N_VISUAL_VERY_LOW, N_VISUAL_LOW, N_VISUAL_MODERATE, N_VISUAL_ADEQUATE,
@@ -237,6 +237,7 @@ class CropEnvironment(
                     fert_events_count=self._state.fertilizer_events_count,
                     task_tier=task.get("observability_tier", 1),
                 )
+                inspect_reward, inspect_channels = inspect_reward
 
                 return self._build_observation(
                     task, done=False, reward=inspect_reward,
@@ -245,6 +246,7 @@ class CropEnvironment(
                         intent_reward=inspect_reward,
                         delta_reward=0.0,
                         step_reward=inspect_reward,
+                        intent_channels=inspect_channels,
                     ),
                     inspect_performed=action_type,
                 )
@@ -365,8 +367,9 @@ class CropEnvironment(
                 total_n=self._sim.total_n,
                 total_water=self._sim.total_water,
             )
-            # Map step signal from [-0.30, +0.20] to [0, 1] for blending
-            normalized_harvest = (harvest_step_signal + 0.30) / 0.50
+            harvest_step_signal, _ = harvest_step_signal
+            # Map step signal from [-0.30, +0.25] to [0, 1] for blending
+            normalized_harvest = (harvest_step_signal + 0.30) / 0.55
             normalized_harvest = max(0.0, min(1.0, normalized_harvest))
             final_reward = 0.7 * trajectory_reward + 0.3 * normalized_harvest
 
@@ -403,6 +406,8 @@ class CropEnvironment(
             n_recov=scenario["crop_params"].N_RECOV,
             fert_events_count=self._state.fertilizer_events_count,
         )
+        # compute_step_reward now returns (float, dict)
+        intent_reward, intent_channels = intent_reward
 
         pre_sm = self._sim.sm
         pre_water_stress = self._sim._water_stress()
@@ -432,9 +437,13 @@ class CropEnvironment(
             post_twso=self._sim.twso,
             target_yield=scenario["target_yield"],
         )
+        # compute_delta_reward now returns (float, dict)
+        delta_reward, delta_channels = delta_reward
         # Blend: agronomic intent + observed state change.
         # Validated against harvest_hesitation and drought_rescue probes.
-        step_reward = REWARD_INTENT_WEIGHT * intent_reward + REWARD_DELTA_WEIGHT * delta_reward
+        step_reward = STEP_REWARD_SCALE * (
+            REWARD_INTENT_WEIGHT * intent_reward + REWARD_DELTA_WEIGHT * delta_reward
+        )
         step_reward = max(STEP_REWARD_MIN, min(STEP_REWARD_MAX, step_reward))
 
         # Dose quality feedback for fertilize actions
@@ -455,6 +464,8 @@ class CropEnvironment(
             intent_reward=intent_reward,
             delta_reward=delta_reward,
             step_reward=step_reward,
+            intent_channels=intent_channels,
+            delta_channels=delta_channels,
         )
 
         # Check termination conditions
@@ -513,7 +524,8 @@ class CropEnvironment(
                 total_n=self._sim.total_n,
                 total_water=self._sim.total_water,
             )
-            normalized_harvest = (harvest_step_signal + 0.30) / 0.50
+            harvest_step_signal, _ = harvest_step_signal
+            normalized_harvest = (harvest_step_signal + 0.30) / 0.55
             normalized_harvest = max(0.0, min(1.0, normalized_harvest))
             auto_penalty = 0.5 if not self._state.explicit_harvest else 1.0
             final_reward = (
@@ -645,6 +657,8 @@ class CropEnvironment(
         intent_reward: float | None = None,
         delta_reward: float | None = None,
         step_reward: float | None = None,
+        intent_channels: dict[str, float] | None = None,
+        delta_channels: dict[str, float] | None = None,
     ) -> dict[str, Any]:
         metadata: dict[str, Any] = {}
         probe_name = self._scenario.get("probe_name")
@@ -658,6 +672,10 @@ class CropEnvironment(
                 "delta_reward": round(delta_reward or 0.0, 4),
                 "step_reward": round(step_reward or 0.0, 4),
             }
+            if intent_channels:
+                metadata["reward_breakdown"]["intent_channels"] = intent_channels
+            if delta_channels:
+                metadata["reward_breakdown"]["delta_channels"] = delta_channels
         return metadata
 
     def _build_observation(
@@ -750,6 +768,8 @@ class CropEnvironment(
                 n_availability=round(sim.n_factor, 3),
                 field_capacity=scenario["soil_params"].field_capacity,
                 wilting_point=scenario["soil_params"].wilting_point,
+                n_leached=round(sim.total_n_leached, 4) if task.get("observability_tier", 1) <= 2 else None,
+                slow_release_pool=round(sim.slow_release_pool, 2) if task.get("observability_tier", 1) <= 2 else None,
             ),
             weather_today=WeatherDay(
                 day=sim.current_day,
