@@ -205,7 +205,7 @@ def test_observation_includes_control_features():
 
 def test_irrigation_reward_prefers_moderate_dose():
     """A moderate irrigation dose should beat a wasteful large dose in dry soil."""
-    moderate = compute_step_reward(
+    moderate, _ = compute_step_reward(
         action_type="irrigate",
         dvs=0.4,
         sm=0.24,
@@ -215,7 +215,7 @@ def test_irrigation_reward_prefers_moderate_dose():
         total_water=0.0,
         forecast_rain=0.0,
     )
-    wasteful = compute_step_reward(
+    wasteful, _ = compute_step_reward(
         action_type="irrigate",
         dvs=0.4,
         sm=0.24,
@@ -232,7 +232,7 @@ def test_fertilizer_reward_prefers_sensible_dose_in_window():
     """A dose matching plant N-deficit should beat an excessive dose."""
     # n_availability=0.60 → deficit = 0.40 → ideal dose = 0.40/0.008 = 50 kg (capped)
     # At n_availability=0.80 → ideal dose = (1.0-0.80)/0.008 = 25 kg
-    sensible = compute_step_reward(
+    sensible, _ = compute_step_reward(
         action_type="fertilize",
         dvs=0.30,
         sm=0.30,
@@ -242,7 +242,7 @@ def test_fertilizer_reward_prefers_sensible_dose_in_window():
         total_n=10.0,
         n_availability=0.80,
     )
-    excessive = compute_step_reward(
+    excessive, _ = compute_step_reward(
         action_type="fertilize",
         dvs=0.30,
         sm=0.30,
@@ -257,7 +257,7 @@ def test_fertilizer_reward_prefers_sensible_dose_in_window():
 
 def test_delta_reward_is_positive_for_stress_relief():
     """Post-transition reward should be positive when stress is clearly relieved."""
-    reward = compute_delta_reward(
+    reward, breakdown = compute_delta_reward(
         action_type="irrigate",
         pre_sm=0.19,
         post_sm=0.24,
@@ -269,6 +269,7 @@ def test_delta_reward_is_positive_for_stress_relief():
         budget_remaining=100.0,
     )
     assert reward > 0.0
+    assert "stress_relief" in breakdown
 
 
 def test_grain_fill_heat_stress_reduces_growth_under_extreme_heat():
@@ -333,8 +334,8 @@ def test_grain_shattering_causes_yield_peak_and_decline():
     assert twso_values[-1] < max(twso_values)
 
 
-def test_wait_actions_do_not_accumulate_positive_dense_reward():
-    """Wait actions should remain neutral on dense reward before terminal grading."""
+def test_wait_rewards_are_bounded():
+    """Wait actions should produce bounded small rewards — positive for correct patience."""
     env = CropEnvironment()
     obs = env.reset(seed=SEED, task_id=1)
 
@@ -345,7 +346,7 @@ def test_wait_actions_do_not_accumulate_positive_dense_reward():
         if obs.done:
             break
 
-    assert all(reward <= 0.0 for reward in dense_rewards)
+    assert all(-0.2 <= reward <= 0.15 for reward in dense_rewards)
 
 
 def test_step_metadata_includes_reward_breakdown():
@@ -568,7 +569,7 @@ def test_late_harvest_penalty_hits_floor_after_dvs_23():
 def test_out_of_window_fertilizer_reward_is_negative():
     """Fertilizing outside the DVS 0.20-0.40 / 0.50-0.70 windows must be penalized."""
     for dvs in (0.45, 0.80, 1.2):
-        reward = compute_step_reward(
+        reward, _ = compute_step_reward(
             action_type="fertilize",
             dvs=dvs,
             sm=0.30,
@@ -871,7 +872,7 @@ def test_baseline_scores_stable():
     If this test breaks, either the grading formula, reward shaping,
     crop parameters, or oracle baseline changed — update README/ARCHITECTURE.
     """
-    expected = {1: 0.9593, 2: 0.9409, 3: 0.9067}
+    expected = {1: 0.9520, 2: 0.9338, 3: 0.8862}
     for task_id, expected_score in expected.items():
         env = CropEnvironment()
         obs = env.reset(seed=SEED, task_id=task_id)
@@ -1068,7 +1069,7 @@ def test_tier1_unchanged_after_upgrade():
     while not obs.done:
         obs = env.step(CropAction(**oracle_action(obs, oracle_state)))
         steps += 1
-    assert obs.reward == pytest.approx(0.9593, abs=0.001)
+    assert obs.reward == pytest.approx(0.9520, abs=0.001)
 
 
 def test_inspect_no_cap_budget_only():

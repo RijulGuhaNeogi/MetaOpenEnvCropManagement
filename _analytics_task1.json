@@ -1,20 +1,20 @@
 {
   "task_id": 1,
-  "model": "llama-3.3-70b-versatile",
+  "model": "meta-llama/llama-4-scout-17b-16e-instruct",
   "seed": 42,
-  "timestamp": "2026-04-08T00:28:12.455316",
-  "final_score": 0.9588,
+  "timestamp": "2026-04-09T16:10:45.956736",
+  "final_score": 0.9446,
   "rubric_breakdown": {
-    "yield_score": 0.951,
-    "water_efficiency": 0.951,
-    "cost_efficiency": 0.844,
-    "timing_quality": 0.975,
+    "yield_score": 0.9615,
+    "water_efficiency": 0.9615,
+    "cost_efficiency": 0.7992,
+    "timing_quality": 0.916,
     "harvest_timing": 1.0,
-    "actual_yield": 6417.1,
-    "target_yield": 6748.0,
+    "actual_yield": 6484.8,
+    "target_yield": 6744.4,
     "total_water": 0.0,
     "total_n": 60.0,
-    "total_cost": 90.0,
+    "total_cost": 135.0,
     "budget": 800.0,
     "harvest_dvs": 1.924,
     "harvested": true,
@@ -24,9 +24,9 @@
   "aborted": false,
   "abort_reason": null,
   "total_steps": 19,
-  "oracle_alignment_pct": 100.0,
-  "oracle_alignment_all_pct": 100.0,
-  "mean_dose_error_kg": 3.5,
+  "oracle_alignment_pct": 83.3,
+  "oracle_alignment_all_pct": 84.2,
+  "mean_dose_error_kg": null,
   "steps": [
     {
       "step": 1,
@@ -41,6 +41,8 @@
         "sm": 0.38,
         "water_stress": 1.0,
         "n_availability": 0.55,
+        "n_leached": 0.0,
+        "slow_release_pool": 0.0,
         "total_water_cm": 0.0,
         "total_n_kg_ha": 0.0,
         "total_cost": 0.0,
@@ -58,11 +60,24 @@
       },
       "action_matches_oracle": true,
       "amount_diff": 0.0,
-      "reward": -0.0003,
+      "reward": 0.0075,
       "reward_breakdown": {
-        "intent_reward": 0.0,
+        "intent_reward": 0.01,
         "delta_reward": -0.0004,
-        "step_reward": -0.0003
+        "step_reward": 0.0075,
+        "intent_channels": {
+          "patience_bonus": 0.01,
+          "stress_penalty": -0.0,
+          "n_penalty": -0.0,
+          "fert_window_penalty": 0.0,
+          "irrigation_penalty": 0.0,
+          "harvest_urgency": 0.0
+        },
+        "delta_channels": {
+          "yield_progress": 0.0,
+          "stress_delta": 0.0,
+          "n_delta": -0.0004
+        }
       },
       "post_state": {
         "day": 7,
@@ -74,6 +89,8 @@
         "sm": 0.386,
         "water_stress": 1.0,
         "n_availability": 0.548,
+        "n_leached": 0.0,
+        "slow_release_pool": 0.0,
         "total_water_cm": 0.0,
         "total_n_kg_ha": 0.0,
         "total_cost": 0.0,
@@ -94,6 +111,8 @@
         "sm": 0.386,
         "water_stress": 1.0,
         "n_availability": 0.548,
+        "n_leached": 0.0,
+        "slow_release_pool": 0.0,
         "total_water_cm": 0.0,
         "total_n_kg_ha": 0.0,
         "total_cost": 0.0,
@@ -107,15 +126,28 @@
       "llm_decision": {
         "action_type": "wait",
         "amount": 0,
-        "raw_response": "{\"action_type\":\"WAIT\",\"amount\":0}"
+        "raw_response": "{\"action_type\":\"wait\", \"amount\":0}"
       },
       "action_matches_oracle": true,
       "amount_diff": 0.0,
-      "reward": -0.0003,
+      "reward": 0.0075,
       "reward_breakdown": {
-        "intent_reward": 0.0,
+        "intent_reward": 0.01,
         "delta_reward": -0.0004,
-        "step_reward": -0.0003
+        "step_reward": 0.0075,
+        "intent_channels": {
+          "patience_bonus": 0.01,
+          "stress_penalty": -0.0,
+          "n_penalty": -0.0,
+          "fert_window_penalty": 0.0,
+          "irrigation_penalty": 0.0,
+          "harvest_urgency": 0.0
+        },
+        "delta_channels": {
+          "yield_progress": 0.0,
+          "stress_delta": 0.0,
+          "n_delta": -0.0004
+        }
       },
       "post_state": {
         "day": 14,
@@ -127,6 +159,8 @@
         "sm": 0.419,
         "water_stress": 1.0,
         "n_availability": 0.546,
+        "n_leached": 0.0,
+        "slow_release_pool": 0.0,
         "total_water_cm": 0.0,
         "total_n_kg_ha": 0.0,
         "total_cost": 0.0,
@@ -147,6 +181,8 @@
         "sm": 0.419,
         "water_stress": 1.0,
         "n_availability": 0.546,
+        "n_leached": 0.0,
+        "slow_release_pool": 0.0,
         "total_water_cm": 0.0,
         "total_n_kg_ha": 0.0,
         "total_cost": 0.0,
@@ -160,15 +196,28 @@
       "llm_decision": {
         "action_type": "wait",
         "amount": 0,
-        "raw_response": "{\"action_type\":\"WAIT\",\"amount\":0}"
+        "raw_response": "{\"action_type\":\"wait\",\"amount\":0}"
       },
       "action_matches_oracle": true,
       "amount_diff": 0.0,
-      "reward": -0.0003,
+      "reward": 0.0235,
       "reward_breakdown": {
-        "intent_reward": 0.0,
+        "intent_reward": 0.03,
         "delta_reward": -0.0004,
-        "step_reward": -0.0003
+        "step_reward": 0.0235,
+        "intent_channels": {
+          "patience_bonus": 0.03,
+          "stress_penalty": -0.0,
+          "n_penalty": -0.0,
+          "fert_window_penalty": 0.0,
+          "irrigation_penalty": 0.0,
+          "harvest_urgency": 0.0
+        },
+        "delta_channels": {
+          "yield_progress": 0.0,
+          "stress_delta": 0.0,
+          "n_delta": -0.0004
+        }
       },
       "post_state": {
         "day": 21,
@@ -180,6 +229,8 @@
         "sm": 0.425,
         "water_stress": 1.0,
         "n_availability": 0.544,
+        "n_leached": 0.0,
+        "slow_release_pool": 0.0,
         "total_water_cm": 0.0,
         "total_n_kg_ha": 0.0,
         "total_cost": 0.0,
@@ -200,43 +251,61 @@
         "sm": 0.425,
         "water_stress": 1.0,
         "n_availability": 0.544,
+        "n_leached": 0.0,
+        "slow_release_pool": 0.0,
         "total_water_cm": 0.0,
         "total_n_kg_ha": 0.0,
         "total_cost": 0.0,
         "budget_remaining": 800.0
       },
-      "advisory_text": "Week 4 of 40. Early vegetative (tillering) (DVS 0.24). Soil moisture adequate at 42%. Soil well above optimal moisture range \u2014 no irrigation needed. Crop is in the first fertilization window (DVS 0.20-0.40, target 0.30, currently 0.24). Early in window \u2014 waiting closer to target DVS 0.30 improves timing score. Nitrogen is low \u2014 a substantial application (~45kg) is recommended. 0.4 cm rain expected next 3 days. 1.5 cm over 7 days. Cumulative water: 0.0 cm, N applied: 0.0 kg/ha. Budget: $800 remaining (100%).",
+      "advisory_text": "Week 4 of 40. Early vegetative (tillering) (DVS 0.24). Soil moisture adequate at 42%. Soil well above optimal moisture range \u2014 no irrigation needed. Crop is in the first fertilization window (DVS 0.20-0.40, target 0.30, currently 0.24). Early in window \u2014 waiting closer to target DVS 0.30 improves timing score. Nitrogen is low \u2014 a substantial application (~45kg) is recommended. \u26a0 Leaching risk: soil is wet or rain expected. Consider slow-release fertilizer (fertilize_slow) to protect N. 0.4 cm rain expected next 3 days. 1.5 cm over 7 days. Cumulative water: 0.0 cm, N applied: 0.0 kg/ha. Budget: $800 remaining (100%).",
       "oracle_recommendation": {
         "action_type": "wait",
         "amount": 0.0
       },
       "llm_decision": {
-        "action_type": "wait",
-        "amount": 0,
-        "raw_response": "{\"action_type\":\"WAIT\",\"amount\":0}"
+        "action_type": "fertilize_slow",
+        "amount": 45,
+        "raw_response": "{\"action_type\":\"fertilize_slow\",\"amount\":45}"
       },
-      "action_matches_oracle": true,
-      "amount_diff": 0.0,
-      "reward": -0.0003,
+      "action_matches_oracle": false,
+      "amount_diff": null,
+      "reward": 0.2375,
       "reward_breakdown": {
-        "intent_reward": 0.0,
-        "delta_reward": -0.0004,
-        "step_reward": -0.0003
+        "intent_reward": 0.0719,
+        "delta_reward": 0.15,
+        "step_reward": 0.2375,
+        "intent_channels": {
+          "timing_score": 0.3866,
+          "dose_fitness": 0.9,
+          "window_bonus": 0.14,
+          "excess_penalty": 0.0,
+          "weather_awareness": 0.0,
+          "cap_exceeded": 0.0
+        },
+        "delta_channels": {
+          "n_recovery": 0.1762,
+          "inefficiency_penalty": 0.0,
+          "cost_pressure": 0.0177,
+          "yield_progress": 0.0
+        }
       },
       "post_state": {
         "day": 28,
         "days_remaining": 252,
         "dvs": 0.323,
         "growth_stage": "vegetative",
-        "lai": 1.58,
+        "lai": 2.17,
         "twso": 0.0,
         "sm": 0.421,
         "water_stress": 1.0,
-        "n_availability": 0.542,
+        "n_availability": 0.837,
+        "n_leached": 0.0,
+        "slow_release_pool": 8.04,
         "total_water_cm": 0.0,
-        "total_n_kg_ha": 0.0,
-        "total_cost": 0.0,
-        "budget_remaining": 800.0
+        "total_n_kg_ha": 45.0,
+        "total_cost": 101.25,
+        "budget_remaining": 698.75
       },
       "is_terminal": false
     },
@@ -248,48 +317,66 @@
         "days_remaining": 252,
         "dvs": 0.323,
         "growth_stage": "vegetative",
-        "lai": 1.58,
+        "lai": 2.17,
         "twso": 0.0,
         "sm": 0.421,
         "water_stress": 1.0,
-        "n_availability": 0.542,
+        "n_availability": 0.837,
+        "n_leached": 0.0,
+        "slow_release_pool": 8.04,
         "total_water_cm": 0.0,
-        "total_n_kg_ha": 0.0,
-        "total_cost": 0.0,
-        "budget_remaining": 800.0
+        "total_n_kg_ha": 45.0,
+        "total_cost": 101.25,
+        "budget_remaining": 698.75
       },
-      "advisory_text": "Week 5 of 40. Late vegetative (stem elongation) (DVS 0.32). Soil moisture adequate at 42%. Soil well above optimal moisture range \u2014 no irrigation needed. Crop is in the first fertilization window (DVS 0.20-0.40, target 0.30, currently 0.32). Near optimal fertilization timing (target DVS 0.30). Nitrogen is low \u2014 a substantial application (~45kg) is recommended. 0.2 cm rain expected next 3 days. 0.6 cm over 7 days. Cumulative water: 0.0 cm, N applied: 0.0 kg/ha. Budget: $800 remaining (100%).",
+      "advisory_text": "Week 5 of 40. Late vegetative (stem elongation) (DVS 0.32). Soil moisture adequate at 42%. Soil well above optimal moisture range \u2014 no irrigation needed. Crop is in the first fertilization window (DVS 0.20-0.40, target 0.30, currently 0.32). Near optimal fertilization timing (target DVS 0.30). Nitrogen is adequate \u2014 a small application (~15kg) may suffice. \u26a0 Leaching risk: soil is wet or rain expected. Consider slow-release fertilizer (fertilize_slow) to protect N. 0.2 cm rain expected next 3 days. 0.6 cm over 7 days. Cumulative water: 0.0 cm, N applied: 45.0 kg/ha. Budget: $699 remaining (87%).",
       "oracle_recommendation": {
         "action_type": "fertilize",
-        "amount": 50.0
+        "amount": 20.4
       },
       "llm_decision": {
-        "action_type": "fertilize",
-        "amount": 45,
-        "raw_response": "{\"action_type\":\"fertilize\",\"amount\":45}"
+        "action_type": "fertilize_slow",
+        "amount": 15,
+        "raw_response": "{\"action_type\":\"fertilize_slow\",\"amount\":15}"
       },
-      "action_matches_oracle": true,
-      "amount_diff": 5.0,
-      "reward": 0.1321,
+      "action_matches_oracle": false,
+      "amount_diff": null,
+      "reward": 0.1189,
       "reward_breakdown": {
-        "intent_reward": 0.1053,
-        "delta_reward": 0.15,
-        "step_reward": 0.1321
+        "intent_reward": 0.063,
+        "delta_reward": 0.0571,
+        "step_reward": 0.1189,
+        "intent_channels": {
+          "timing_score": 0.7657,
+          "dose_fitness": 0.7376,
+          "window_bonus": 0.14,
+          "excess_penalty": 0.0233,
+          "weather_awareness": 0.0,
+          "cap_exceeded": 0.0
+        },
+        "delta_channels": {
+          "n_recovery": 0.0735,
+          "inefficiency_penalty": 0.0,
+          "cost_pressure": 0.0164,
+          "yield_progress": 0.0
+        }
       },
       "post_state": {
         "day": 35,
         "days_remaining": 245,
         "dvs": 0.413,
         "growth_stage": "vegetative",
-        "lai": 3.98,
+        "lai": 4.96,
         "twso": 0.0,
-        "sm": 0.422,
+        "sm": 0.421,
         "water_stress": 1.0,
-        "n_availability": 0.9,
+        "n_availability": 0.96,
+        "n_leached": 0.0,
+        "slow_release_pool": 7.46,
         "total_water_cm": 0.0,
-        "total_n_kg_ha": 45.0,
-        "total_cost": 67.5,
-        "budget_remaining": 732.5
+        "total_n_kg_ha": 60.0,
+        "total_cost": 135.0,
+        "budget_remaining": 665.0
       },
       "is_terminal": false
     },
@@ -301,17 +388,19 @@
         "days_remaining": 245,
         "dvs": 0.413,
         "growth_stage": "vegetative",
-        "lai": 3.98,
+        "lai": 4.96,
         "twso": 0.0,
-        "sm": 0.422,
+        "sm": 0.421,
         "water_stress": 1.0,
-        "n_availability": 0.9,
+        "n_availability": 0.96,
+        "n_leached": 0.0,
+        "slow_release_pool": 7.46,
         "total_water_cm": 0.0,
-        "total_n_kg_ha": 45.0,
-        "total_cost": 67.5,
-        "budget_remaining": 732.5
+        "total_n_kg_ha": 60.0,
+        "total_cost": 135.0,
+        "budget_remaining": 665.0
       },
-      "advisory_text": "Week 6 of 40. Late vegetative (stem elongation) (DVS 0.41). Soil moisture adequate at 42%. Soil well above optimal moisture range \u2014 no irrigation needed. 0.6 cm rain expected next 3 days. 0.8 cm over 7 days. Cumulative water: 0.0 cm, N applied: 45.0 kg/ha. Budget: $732 remaining (92%).",
+      "advisory_text": "Week 6 of 40. Late vegetative (stem elongation) (DVS 0.41). Soil moisture adequate at 42%. Soil well above optimal moisture range \u2014 no irrigation needed. 0.6 cm rain expected next 3 days. 0.8 cm over 7 days. Cumulative water: 0.0 cm, N applied: 60.0 kg/ha. Budget: $665 remaining (83%).",
       "oracle_recommendation": {
         "action_type": "wait",
         "amount": 0.0
@@ -323,11 +412,24 @@
       },
       "action_matches_oracle": true,
       "amount_diff": 0.0,
-      "reward": -0.0002,
+      "reward": 0.0293,
       "reward_breakdown": {
-        "intent_reward": 0.0,
-        "delta_reward": -0.0004,
-        "step_reward": -0.0002
+        "intent_reward": 0.03,
+        "delta_reward": 0.0044,
+        "step_reward": 0.0293,
+        "intent_channels": {
+          "patience_bonus": 0.03,
+          "stress_penalty": -0.0,
+          "n_penalty": -0.0,
+          "fert_window_penalty": 0.0,
+          "irrigation_penalty": 0.0,
+          "harvest_urgency": 0.0
+        },
+        "delta_channels": {
+          "yield_progress": 0.0,
+          "stress_delta": 0.0,
+          "n_delta": 0.0044
+        }
       },
       "post_state": {
         "day": 42,
@@ -336,13 +438,15 @@
         "growth_stage": "flowering",
         "lai": 6.0,
         "twso": 0.1,
-        "sm": 0.413,
+        "sm": 0.411,
         "water_stress": 1.0,
-        "n_availability": 0.897,
+        "n_availability": 0.982,
+        "n_leached": 0.0,
+        "slow_release_pool": 4.44,
         "total_water_cm": 0.0,
-        "total_n_kg_ha": 45.0,
-        "total_cost": 67.5,
-        "budget_remaining": 732.5
+        "total_n_kg_ha": 60.0,
+        "total_cost": 135.0,
+        "budget_remaining": 665.0
       },
       "is_terminal": false
     },
@@ -356,15 +460,17 @@
         "growth_stage": "flowering",
         "lai": 6.0,
         "twso": 0.1,
-        "sm": 0.413,
+        "sm": 0.411,
         "water_stress": 1.0,
-        "n_availability": 0.897,
+        "n_availability": 0.982,
+        "n_leached": 0.0,
+        "slow_release_pool": 4.44,
         "total_water_cm": 0.0,
-        "total_n_kg_ha": 45.0,
-        "total_cost": 67.5,
-        "budget_remaining": 732.5
+        "total_n_kg_ha": 60.0,
+        "total_cost": 135.0,
+        "budget_remaining": 665.0
       },
-      "advisory_text": "Week 7 of 40. Late vegetative (stem elongation) (DVS 0.50). Soil moisture adequate at 41%. Soil well above optimal moisture range \u2014 no irrigation needed. Crop is in the second fertilization window (DVS 0.50-0.70, target 0.60, currently 0.50). Early in window \u2014 waiting closer to target DVS 0.60 improves timing score. Nitrogen is adequate \u2014 a small application (~15kg) may suffice. 0.4 cm rain expected next 3 days. 3.5 cm over 7 days. Cumulative water: 0.0 cm, N applied: 45.0 kg/ha. Budget: $732 remaining (92%).",
+      "advisory_text": "Week 7 of 40. Late vegetative (stem elongation) (DVS 0.50). Soil moisture adequate at 41%. Soil well above optimal moisture range \u2014 no irrigation needed. Crop is in the second fertilization window (DVS 0.50-0.70, target 0.60, currently 0.50). Early in window \u2014 waiting closer to target DVS 0.60 improves timing score. Nitrogen is surplus \u2014 no fertilization needed. \u26a0 Leaching risk: soil is wet or rain expected. Consider slow-release fertilizer (fertilize_slow) to protect N. 0.4 cm rain expected next 3 days. 3.5 cm over 7 days. Cumulative water: 0.0 cm, N applied: 60.0 kg/ha. Budget: $665 remaining (83%).",
       "oracle_recommendation": {
         "action_type": "wait",
         "amount": 0.0
@@ -376,11 +482,24 @@
       },
       "action_matches_oracle": true,
       "amount_diff": 0.0,
-      "reward": 0.0001,
+      "reward": 0.0225,
       "reward_breakdown": {
-        "intent_reward": 0.0,
-        "delta_reward": 0.0002,
-        "step_reward": 0.0001
+        "intent_reward": 0.02,
+        "delta_reward": 0.0054,
+        "step_reward": 0.0225,
+        "intent_channels": {
+          "patience_bonus": 0.02,
+          "stress_penalty": -0.0,
+          "n_penalty": -0.0,
+          "fert_window_penalty": 0.0,
+          "irrigation_penalty": 0.0,
+          "harvest_urgency": 0.0
+        },
+        "delta_channels": {
+          "yield_progress": 0.003,
+          "stress_delta": 0.0,
+          "n_delta": 0.0025
+        }
       },
       "post_state": {
         "day": 49,
@@ -388,14 +507,16 @@
         "dvs": 0.602,
         "growth_stage": "flowering",
         "lai": 6.0,
-        "twso": 9.1,
-        "sm": 0.403,
+        "twso": 10.1,
+        "sm": 0.401,
         "water_stress": 1.0,
-        "n_availability": 0.895,
+        "n_availability": 0.994,
+        "n_leached": 0.0,
+        "slow_release_pool": 2.64,
         "total_water_cm": 0.0,
-        "total_n_kg_ha": 45.0,
-        "total_cost": 67.5,
-        "budget_remaining": 732.5
+        "total_n_kg_ha": 60.0,
+        "total_cost": 135.0,
+        "budget_remaining": 665.0
       },
       "is_terminal": false
     },
@@ -408,32 +529,47 @@
         "dvs": 0.602,
         "growth_stage": "flowering",
         "lai": 6.0,
-        "twso": 9.1,
-        "sm": 0.403,
+        "twso": 10.1,
+        "sm": 0.401,
         "water_stress": 1.0,
-        "n_availability": 0.895,
+        "n_availability": 0.994,
+        "n_leached": 0.0,
+        "slow_release_pool": 2.64,
         "total_water_cm": 0.0,
-        "total_n_kg_ha": 45.0,
-        "total_cost": 67.5,
-        "budget_remaining": 732.5
+        "total_n_kg_ha": 60.0,
+        "total_cost": 135.0,
+        "budget_remaining": 665.0
       },
-      "advisory_text": "Week 8 of 40. Late vegetative (stem elongation) (DVS 0.60). Soil moisture adequate at 40%. Soil well above optimal moisture range \u2014 no irrigation needed. Crop is in the second fertilization window (DVS 0.50-0.70, target 0.60, currently 0.60). Near optimal fertilization timing (target DVS 0.60). Nitrogen is adequate \u2014 a small application (~15kg) may suffice. 1.4 cm rain expected next 3 days. 4.6 cm over 7 days. Cumulative water: 0.0 cm, N applied: 45.0 kg/ha. Budget: $732 remaining (92%).",
+      "advisory_text": "Week 8 of 40. Late vegetative (stem elongation) (DVS 0.60). Soil moisture adequate at 40%. Soil well above optimal moisture range \u2014 no irrigation needed. Crop is in the second fertilization window (DVS 0.50-0.70, target 0.60, currently 0.60). Near optimal fertilization timing (target DVS 0.60). Nitrogen is surplus \u2014 no fertilization needed. \u26a0 Leaching risk: soil is wet or rain expected. Consider slow-release fertilizer (fertilize_slow) to protect N. 1.4 cm rain expected next 3 days. 4.6 cm over 7 days. Cumulative water: 0.0 cm, N applied: 60.0 kg/ha. Budget: $665 remaining (83%).",
       "oracle_recommendation": {
-        "action_type": "fertilize",
-        "amount": 13.1
+        "action_type": "fertilize_slow",
+        "amount": 0.8
       },
       "llm_decision": {
-        "action_type": "fertilize",
-        "amount": 15,
-        "raw_response": "{\"action_type\":\"fertilize\",\"amount\":15}"
+        "action_type": "wait",
+        "amount": 0,
+        "raw_response": "{\"action_type\":\"WAIT\",\"amount\":0}"
       },
-      "action_matches_oracle": true,
-      "amount_diff": 1.9,
-      "reward": 0.0673,
+      "action_matches_oracle": false,
+      "amount_diff": null,
+      "reward": 0.0111,
       "reward_breakdown": {
-        "intent_reward": 0.0777,
-        "delta_reward": 0.0603,
-        "step_reward": 0.0673
+        "intent_reward": 0.0,
+        "delta_reward": 0.0092,
+        "step_reward": 0.0111,
+        "intent_channels": {
+          "patience_bonus": 0.0,
+          "stress_penalty": -0.0,
+          "n_penalty": -0.0,
+          "fert_window_penalty": 0.0,
+          "irrigation_penalty": 0.0,
+          "harvest_urgency": 0.0
+        },
+        "delta_channels": {
+          "yield_progress": 0.0081,
+          "stress_delta": 0.0,
+          "n_delta": 0.0011
+        }
       },
       "post_state": {
         "day": 56,
@@ -441,14 +577,16 @@
         "dvs": 0.702,
         "growth_stage": "flowering",
         "lai": 6.0,
-        "twso": 36.4,
-        "sm": 0.451,
+        "twso": 37.4,
+        "sm": 0.449,
         "water_stress": 1.0,
-        "n_availability": 0.998,
+        "n_availability": 1.0,
+        "n_leached": 0.0,
+        "slow_release_pool": 1.57,
         "total_water_cm": 0.0,
         "total_n_kg_ha": 60.0,
-        "total_cost": 90.0,
-        "budget_remaining": 710.0
+        "total_cost": 135.0,
+        "budget_remaining": 665.0
       },
       "is_terminal": false
     },
@@ -461,16 +599,18 @@
         "dvs": 0.702,
         "growth_stage": "flowering",
         "lai": 6.0,
-        "twso": 36.4,
-        "sm": 0.451,
+        "twso": 37.4,
+        "sm": 0.449,
         "water_stress": 1.0,
-        "n_availability": 0.998,
+        "n_availability": 1.0,
+        "n_leached": 0.0,
+        "slow_release_pool": 1.57,
         "total_water_cm": 0.0,
         "total_n_kg_ha": 60.0,
-        "total_cost": 90.0,
-        "budget_remaining": 710.0
+        "total_cost": 135.0,
+        "budget_remaining": 665.0
       },
-      "advisory_text": "Week 9 of 40. Booting / heading (DVS 0.70). Soil moisture adequate at 45%. Soil well above optimal moisture range \u2014 no irrigation needed. 1.0 cm rain expected next 3 days. 2.1 cm over 7 days. Cumulative water: 0.0 cm, N applied: 60.0 kg/ha. Budget: $710 remaining (89%).",
+      "advisory_text": "Week 9 of 40. Booting / heading (DVS 0.70). Soil moisture adequate at 45%. Soil well above optimal moisture range \u2014 no irrigation needed. 1.0 cm rain expected next 3 days. 2.1 cm over 7 days. Cumulative water: 0.0 cm, N applied: 60.0 kg/ha. Budget: $665 remaining (83%).",
       "oracle_recommendation": {
         "action_type": "wait",
         "amount": 0.0
@@ -482,11 +622,24 @@
       },
       "action_matches_oracle": true,
       "amount_diff": 0.0,
-      "reward": 0.002,
+      "reward": 0.0419,
       "reward_breakdown": {
-        "intent_reward": 0.0,
-        "delta_reward": 0.0033,
-        "step_reward": 0.002
+        "intent_reward": 0.03,
+        "delta_reward": 0.0149,
+        "step_reward": 0.0419,
+        "intent_channels": {
+          "patience_bonus": 0.03,
+          "stress_penalty": -0.0,
+          "n_penalty": -0.0,
+          "fert_window_penalty": 0.0,
+          "irrigation_penalty": 0.0,
+          "harvest_urgency": 0.0
+        },
+        "delta_channels": {
+          "yield_progress": 0.0149,
+          "stress_delta": 0.0,
+          "n_delta": 0.0
+        }
       },
       "post_state": {
         "day": 63,
@@ -494,14 +647,16 @@
         "dvs": 0.803,
         "growth_stage": "flowering",
         "lai": 6.0,
-        "twso": 86.5,
-        "sm": 0.464,
+        "twso": 87.6,
+        "sm": 0.462,
         "water_stress": 1.0,
-        "n_availability": 0.996,
+        "n_availability": 1.0,
+        "n_leached": 0.0,
+        "slow_release_pool": 0.94,
         "total_water_cm": 0.0,
         "total_n_kg_ha": 60.0,
-        "total_cost": 90.0,
-        "budget_remaining": 710.0
+        "total_cost": 135.0,
+        "budget_remaining": 665.0
       },
       "is_terminal": false
     },
@@ -514,16 +669,18 @@
         "dvs": 0.803,
         "growth_stage": "flowering",
         "lai": 6.0,
-        "twso": 86.5,
-        "sm": 0.464,
+        "twso": 87.6,
+        "sm": 0.462,
         "water_stress": 1.0,
-        "n_availability": 0.996,
+        "n_availability": 1.0,
+        "n_leached": 0.0,
+        "slow_release_pool": 0.94,
         "total_water_cm": 0.0,
         "total_n_kg_ha": 60.0,
-        "total_cost": 90.0,
-        "budget_remaining": 710.0
+        "total_cost": 135.0,
+        "budget_remaining": 665.0
       },
-      "advisory_text": "Week 10 of 40. Flowering (anthesis) (DVS 0.80). Soil moisture adequate at 46%. Soil well above optimal moisture range \u2014 no irrigation needed. 0.6 cm rain expected next 3 days. 1.0 cm over 7 days. Cumulative water: 0.0 cm, N applied: 60.0 kg/ha. Budget: $710 remaining (89%).",
+      "advisory_text": "Week 10 of 40. Flowering (anthesis) (DVS 0.80). Soil moisture adequate at 46%. Soil well above optimal moisture range \u2014 no irrigation needed. 0.6 cm rain expected next 3 days. 1.0 cm over 7 days. Cumulative water: 0.0 cm, N applied: 60.0 kg/ha. Budget: $665 remaining (83%).",
       "oracle_recommendation": {
         "action_type": "wait",
         "amount": 0.0
@@ -535,11 +692,24 @@
       },
       "action_matches_oracle": true,
       "amount_diff": 0.0,
-      "reward": 0.0025,
+      "reward": 0.0465,
       "reward_breakdown": {
-        "intent_reward": 0.0,
-        "delta_reward": 0.0042,
-        "step_reward": 0.0025
+        "intent_reward": 0.03,
+        "delta_reward": 0.0188,
+        "step_reward": 0.0465,
+        "intent_channels": {
+          "patience_bonus": 0.03,
+          "stress_penalty": -0.0,
+          "n_penalty": -0.0,
+          "fert_window_penalty": 0.0,
+          "irrigation_penalty": 0.0,
+          "harvest_urgency": 0.0
+        },
+        "delta_channels": {
+          "yield_progress": 0.0188,
+          "stress_delta": 0.0,
+          "n_delta": 0.0
+        }
       },
       "post_state": {
         "day": 70,
@@ -547,14 +717,16 @@
         "dvs": 0.91,
         "growth_stage": "flowering",
         "lai": 6.0,
-        "twso": 149.5,
-        "sm": 0.454,
+        "twso": 150.9,
+        "sm": 0.452,
         "water_stress": 1.0,
-        "n_availability": 0.994,
+        "n_availability": 1.0,
+        "n_leached": 0.0,
+        "slow_release_pool": 0.56,
         "total_water_cm": 0.0,
         "total_n_kg_ha": 60.0,
-        "total_cost": 90.0,
-        "budget_remaining": 710.0
+        "total_cost": 135.0,
+        "budget_remaining": 665.0
       },
       "is_terminal": false
     },
@@ -567,16 +739,18 @@
         "dvs": 0.91,
         "growth_stage": "flowering",
         "lai": 6.0,
-        "twso": 149.5,
-        "sm": 0.454,
+        "twso": 150.9,
+        "sm": 0.452,
         "water_stress": 1.0,
-        "n_availability": 0.994,
+        "n_availability": 1.0,
+        "n_leached": 0.0,
+        "slow_release_pool": 0.56,
         "total_water_cm": 0.0,
         "total_n_kg_ha": 60.0,
-        "total_cost": 90.0,
-        "budget_remaining": 710.0
+        "total_cost": 135.0,
+        "budget_remaining": 665.0
       },
-      "advisory_text": "Week 11 of 40. Flowering (anthesis) (DVS 0.91). Soil moisture adequate at 45%. Soil well above optimal moisture range \u2014 no irrigation needed. 0.6 cm rain expected next 3 days. 0.8 cm over 7 days. Cumulative water: 0.0 cm, N applied: 60.0 kg/ha. Budget: $710 remaining (89%).",
+      "advisory_text": "Week 11 of 40. Flowering (anthesis) (DVS 0.91). Soil moisture adequate at 45%. Soil well above optimal moisture range \u2014 no irrigation needed. 0.6 cm rain expected next 3 days. 0.8 cm over 7 days. Cumulative water: 0.0 cm, N applied: 60.0 kg/ha. Budget: $665 remaining (83%).",
       "oracle_recommendation": {
         "action_type": "wait",
         "amount": 0.0
@@ -588,11 +762,24 @@
       },
       "action_matches_oracle": true,
       "amount_diff": 0.0,
-      "reward": 0.0034,
+      "reward": 0.0542,
       "reward_breakdown": {
-        "intent_reward": 0.0,
-        "delta_reward": 0.0057,
-        "step_reward": 0.0034
+        "intent_reward": 0.03,
+        "delta_reward": 0.0251,
+        "step_reward": 0.0542,
+        "intent_channels": {
+          "patience_bonus": 0.03,
+          "stress_penalty": -0.0,
+          "n_penalty": -0.0,
+          "fert_window_penalty": 0.0,
+          "irrigation_penalty": 0.0,
+          "harvest_urgency": 0.0
+        },
+        "delta_channels": {
+          "yield_progress": 0.0254,
+          "stress_delta": 0.0,
+          "n_delta": -0.0003
+        }
       },
       "post_state": {
         "day": 77,
@@ -600,14 +787,16 @@
         "dvs": 1.013,
         "growth_stage": "grain_fill",
         "lai": 6.0,
-        "twso": 234.7,
-        "sm": 0.443,
+        "twso": 236.7,
+        "sm": 0.441,
         "water_stress": 1.0,
-        "n_availability": 0.99,
+        "n_availability": 0.998,
+        "n_leached": 0.0,
+        "slow_release_pool": 0.33,
         "total_water_cm": 0.0,
         "total_n_kg_ha": 60.0,
-        "total_cost": 90.0,
-        "budget_remaining": 710.0
+        "total_cost": 135.0,
+        "budget_remaining": 665.0
       },
       "is_terminal": false
     },
@@ -620,16 +809,18 @@
         "dvs": 1.013,
         "growth_stage": "grain_fill",
         "lai": 6.0,
-        "twso": 234.7,
-        "sm": 0.443,
+        "twso": 236.7,
+        "sm": 0.441,
         "water_stress": 1.0,
-        "n_availability": 0.99,
+        "n_availability": 0.998,
+        "n_leached": 0.0,
+        "slow_release_pool": 0.33,
         "total_water_cm": 0.0,
         "total_n_kg_ha": 60.0,
-        "total_cost": 90.0,
-        "budget_remaining": 710.0
+        "total_cost": 135.0,
+        "budget_remaining": 665.0
       },
-      "advisory_text": "Week 12 of 40. Flowering (anthesis) (DVS 1.01). Soil moisture adequate at 44%. Soil well above optimal moisture range \u2014 no irrigation needed. 1.4 cm rain expected next 3 days. 3.6 cm over 7 days. Cumulative water: 0.0 cm, N applied: 60.0 kg/ha. Budget: $710 remaining (89%).",
+      "advisory_text": "Week 12 of 40. Flowering (anthesis) (DVS 1.01). Soil moisture adequate at 44%. Soil well above optimal moisture range \u2014 no irrigation needed. 1.4 cm rain expected next 3 days. 3.6 cm over 7 days. Cumulative water: 0.0 cm, N applied: 60.0 kg/ha. Budget: $665 remaining (83%).",
       "oracle_recommendation": {
         "action_type": "wait",
         "amount": 0.0
@@ -641,11 +832,24 @@
       },
       "action_matches_oracle": true,
       "amount_diff": 0.0,
-      "reward": 0.01,
+      "reward": 0.0857,
       "reward_breakdown": {
-        "intent_reward": 0.0,
-        "delta_reward": 0.0167,
-        "step_reward": 0.01
+        "intent_reward": 0.02,
+        "delta_reward": 0.0581,
+        "step_reward": 0.0857,
+        "intent_channels": {
+          "patience_bonus": 0.02,
+          "stress_penalty": -0.0,
+          "n_penalty": -0.0,
+          "fert_window_penalty": 0.0,
+          "irrigation_penalty": 0.0,
+          "harvest_urgency": 0.0
+        },
+        "delta_channels": {
+          "yield_progress": 0.06,
+          "stress_delta": 0.0,
+          "n_delta": -0.0019
+        }
       },
       "post_state": {
         "day": 84,
@@ -653,14 +857,16 @@
         "dvs": 1.137,
         "growth_stage": "grain_fill",
         "lai": 6.0,
-        "twso": 488.9,
-        "sm": 0.456,
+        "twso": 493.2,
+        "sm": 0.454,
         "water_stress": 1.0,
-        "n_availability": 0.98,
+        "n_availability": 0.989,
+        "n_leached": 0.0,
+        "slow_release_pool": 0.2,
         "total_water_cm": 0.0,
         "total_n_kg_ha": 60.0,
-        "total_cost": 90.0,
-        "budget_remaining": 710.0
+        "total_cost": 135.0,
+        "budget_remaining": 665.0
       },
       "is_terminal": false
     },
@@ -673,16 +879,18 @@
         "dvs": 1.137,
         "growth_stage": "grain_fill",
         "lai": 6.0,
-        "twso": 488.9,
-        "sm": 0.456,
+        "twso": 493.2,
+        "sm": 0.454,
         "water_stress": 1.0,
-        "n_availability": 0.98,
+        "n_availability": 0.989,
+        "n_leached": 0.0,
+        "slow_release_pool": 0.2,
         "total_water_cm": 0.0,
         "total_n_kg_ha": 60.0,
-        "total_cost": 90.0,
-        "budget_remaining": 710.0
+        "total_cost": 135.0,
+        "budget_remaining": 665.0
       },
-      "advisory_text": "Week 13 of 40. Flowering (anthesis) (DVS 1.14). Soil moisture adequate at 46%. Soil well above optimal moisture range \u2014 no irrigation needed. 1.0 cm rain expected next 3 days. 1.8 cm over 7 days. Cumulative water: 0.0 cm, N applied: 60.0 kg/ha. Budget: $710 remaining (89%).",
+      "advisory_text": "Week 13 of 40. Flowering (anthesis) (DVS 1.14). Soil moisture adequate at 45%. Soil well above optimal moisture range \u2014 no irrigation needed. 1.0 cm rain expected next 3 days. 1.8 cm over 7 days. Cumulative water: 0.0 cm, N applied: 60.0 kg/ha. Budget: $665 remaining (83%).",
       "oracle_recommendation": {
         "action_type": "wait",
         "amount": 0.0
@@ -690,15 +898,28 @@
       "llm_decision": {
         "action_type": "wait",
         "amount": 0,
-        "raw_response": "{\"action_type\":\"WAIT\",\"amount\":0}"
+        "raw_response": "{\"action_type\":\"wait\",\"amount\":0}"
       },
       "action_matches_oracle": true,
       "amount_diff": 0.0,
-      "reward": 0.021,
+      "reward": 0.0856,
       "reward_breakdown": {
-        "intent_reward": 0.0,
-        "delta_reward": 0.0351,
-        "step_reward": 0.021
+        "intent_reward": 0.02,
+        "delta_reward": 0.058,
+        "step_reward": 0.0856,
+        "intent_channels": {
+          "patience_bonus": 0.02,
+          "stress_penalty": -0.0,
+          "n_penalty": -0.0,
+          "fert_window_penalty": 0.0,
+          "irrigation_penalty": 0.0,
+          "harvest_urgency": 0.0
+        },
+        "delta_channels": {
+          "yield_progress": 0.06,
+          "stress_delta": 0.0,
+          "n_delta": -0.002
+        }
       },
       "post_state": {
         "day": 91,
@@ -706,14 +927,16 @@
         "dvs": 1.269,
         "growth_stage": "grain_fill",
         "lai": 6.0,
-        "twso": 990.6,
-        "sm": 0.455,
+        "twso": 999.6,
+        "sm": 0.453,
         "water_stress": 1.0,
-        "n_availability": 0.969,
+        "n_availability": 0.979,
+        "n_leached": 0.0,
+        "slow_release_pool": 0.12,
         "total_water_cm": 0.0,
         "total_n_kg_ha": 60.0,
-        "total_cost": 90.0,
-        "budget_remaining": 710.0
+        "total_cost": 135.0,
+        "budget_remaining": 665.0
       },
       "is_terminal": false
     },
@@ -726,16 +949,18 @@
         "dvs": 1.269,
         "growth_stage": "grain_fill",
         "lai": 6.0,
-        "twso": 990.6,
-        "sm": 0.455,
+        "twso": 999.6,
+        "sm": 0.453,
         "water_stress": 1.0,
-        "n_availability": 0.969,
+        "n_availability": 0.979,
+        "n_leached": 0.0,
+        "slow_release_pool": 0.12,
         "total_water_cm": 0.0,
         "total_n_kg_ha": 60.0,
-        "total_cost": 90.0,
-        "budget_remaining": 710.0
+        "total_cost": 135.0,
+        "budget_remaining": 665.0
       },
-      "advisory_text": "Week 14 of 40. Grain filling (DVS 1.27). Soil moisture adequate at 45%. Soil well above optimal moisture range \u2014 no irrigation needed. 0.8 cm rain expected next 3 days. 1.4 cm over 7 days. Cumulative water: 0.0 cm, N applied: 60.0 kg/ha. Budget: $710 remaining (89%).",
+      "advisory_text": "Week 14 of 40. Grain filling (DVS 1.27). Soil moisture adequate at 45%. Soil well above optimal moisture range \u2014 no irrigation needed. 0.8 cm rain expected next 3 days. 1.4 cm over 7 days. Cumulative water: 0.0 cm, N applied: 60.0 kg/ha. Budget: $665 remaining (83%).",
       "oracle_recommendation": {
         "action_type": "wait",
         "amount": 0.0
@@ -743,15 +968,28 @@
       "llm_decision": {
         "action_type": "wait",
         "amount": 0,
-        "raw_response": "{\"action_type\":\"WAIT\",\"amount\":0}"
+        "raw_response": "{\"action_type\":\"wait\",\"amount\":0}"
       },
       "action_matches_oracle": true,
       "amount_diff": 0.0,
-      "reward": 0.0227,
+      "reward": 0.0856,
       "reward_breakdown": {
-        "intent_reward": 0.0,
-        "delta_reward": 0.0379,
-        "step_reward": 0.0227
+        "intent_reward": 0.02,
+        "delta_reward": 0.058,
+        "step_reward": 0.0856,
+        "intent_channels": {
+          "patience_bonus": 0.02,
+          "stress_penalty": -0.0,
+          "n_penalty": -0.0,
+          "fert_window_penalty": 0.0,
+          "irrigation_penalty": 0.0,
+          "harvest_urgency": 0.0
+        },
+        "delta_channels": {
+          "yield_progress": 0.06,
+          "stress_delta": 0.0,
+          "n_delta": -0.002
+        }
       },
       "post_state": {
         "day": 98,
@@ -759,14 +997,16 @@
         "dvs": 1.399,
         "growth_stage": "grain_fill",
         "lai": 6.0,
-        "twso": 1795.1,
-        "sm": 0.451,
+        "twso": 1812.3,
+        "sm": 0.449,
         "water_stress": 1.0,
-        "n_availability": 0.959,
+        "n_availability": 0.969,
+        "n_leached": 0.0,
+        "slow_release_pool": 0.07,
         "total_water_cm": 0.0,
         "total_n_kg_ha": 60.0,
-        "total_cost": 90.0,
-        "budget_remaining": 710.0
+        "total_cost": 135.0,
+        "budget_remaining": 665.0
       },
       "is_terminal": false
     },
@@ -779,16 +1019,18 @@
         "dvs": 1.399,
         "growth_stage": "grain_fill",
         "lai": 6.0,
-        "twso": 1795.1,
-        "sm": 0.451,
+        "twso": 1812.3,
+        "sm": 0.449,
         "water_stress": 1.0,
-        "n_availability": 0.959,
+        "n_availability": 0.969,
+        "n_leached": 0.0,
+        "slow_release_pool": 0.07,
         "total_water_cm": 0.0,
         "total_n_kg_ha": 60.0,
-        "total_cost": 90.0,
-        "budget_remaining": 710.0
+        "total_cost": 135.0,
+        "budget_remaining": 665.0
       },
-      "advisory_text": "Week 15 of 40. Grain filling (DVS 1.40). Soil moisture adequate at 45%. Soil well above optimal moisture range \u2014 no irrigation needed. 2.8 cm rain expected next 3 days. 5.2 cm over 7 days. Cumulative water: 0.0 cm, N applied: 60.0 kg/ha. Budget: $710 remaining (89%).",
+      "advisory_text": "Week 15 of 40. Grain filling (DVS 1.40). Soil moisture adequate at 45%. Soil well above optimal moisture range \u2014 no irrigation needed. 2.8 cm rain expected next 3 days. 5.2 cm over 7 days. Cumulative water: 0.0 cm, N applied: 60.0 kg/ha. Budget: $665 remaining (83%).",
       "oracle_recommendation": {
         "action_type": "wait",
         "amount": 0.0
@@ -796,15 +1038,28 @@
       "llm_decision": {
         "action_type": "wait",
         "amount": 0,
-        "raw_response": "{\"action_type\":\"WAIT\",\"amount\":0}"
+        "raw_response": "{\"action_type\":\"wait\",\"amount\":0}"
       },
       "action_matches_oracle": true,
       "amount_diff": 0.0,
-      "reward": 0.0227,
+      "reward": 0.0855,
       "reward_breakdown": {
-        "intent_reward": 0.0,
-        "delta_reward": 0.0379,
-        "step_reward": 0.0227
+        "intent_reward": 0.02,
+        "delta_reward": 0.0579,
+        "step_reward": 0.0855,
+        "intent_channels": {
+          "patience_bonus": 0.02,
+          "stress_penalty": -0.0,
+          "n_penalty": -0.0,
+          "fert_window_penalty": 0.0,
+          "irrigation_penalty": 0.0,
+          "harvest_urgency": 0.0
+        },
+        "delta_channels": {
+          "yield_progress": 0.06,
+          "stress_delta": 0.0,
+          "n_delta": -0.0021
+        }
       },
       "post_state": {
         "day": 105,
@@ -812,14 +1067,16 @@
         "dvs": 1.533,
         "growth_stage": "ripening",
         "lai": 5.97,
-        "twso": 2822.9,
+        "twso": 2850.8,
         "sm": 0.48,
         "water_stress": 1.0,
-        "n_availability": 0.948,
+        "n_availability": 0.959,
+        "n_leached": 0.0,
+        "slow_release_pool": 0.04,
         "total_water_cm": 0.0,
         "total_n_kg_ha": 60.0,
-        "total_cost": 90.0,
-        "budget_remaining": 710.0
+        "total_cost": 135.0,
+        "budget_remaining": 665.0
       },
       "is_terminal": false
     },
@@ -832,16 +1089,18 @@
         "dvs": 1.533,
         "growth_stage": "ripening",
         "lai": 5.97,
-        "twso": 2822.9,
+        "twso": 2850.8,
         "sm": 0.48,
         "water_stress": 1.0,
-        "n_availability": 0.948,
+        "n_availability": 0.959,
+        "n_leached": 0.0,
+        "slow_release_pool": 0.04,
         "total_water_cm": 0.0,
         "total_n_kg_ha": 60.0,
-        "total_cost": 90.0,
-        "budget_remaining": 710.0
+        "total_cost": 135.0,
+        "budget_remaining": 665.0
       },
-      "advisory_text": "ALERT: Ripening phase \u2014 NOT yet in harvest window. Wait for DVS >= 1.80 before harvesting. Week 16 of 40. Ripening (DVS 1.53). Soil moisture adequate at 48%. Soil well above optimal moisture range \u2014 no irrigation needed. 0.6 cm rain expected next 3 days. 1.4 cm over 7 days. Cumulative water: 0.0 cm, N applied: 60.0 kg/ha. Budget: $710 remaining (89%).",
+      "advisory_text": "ALERT: Ripening phase \u2014 NOT yet in harvest window. Wait for DVS >= 1.80 before harvesting. Week 16 of 40. Ripening (DVS 1.53). Soil moisture adequate at 48%. Soil well above optimal moisture range \u2014 no irrigation needed. 0.6 cm rain expected next 3 days. 1.4 cm over 7 days. Cumulative water: 0.0 cm, N applied: 60.0 kg/ha. Budget: $665 remaining (83%).",
       "oracle_recommendation": {
         "action_type": "wait",
         "amount": 0.0
@@ -853,11 +1112,24 @@
       },
       "action_matches_oracle": true,
       "amount_diff": 0.0,
-      "reward": 0.0227,
+      "reward": 0.0935,
       "reward_breakdown": {
-        "intent_reward": 0.0,
-        "delta_reward": 0.0379,
-        "step_reward": 0.0227
+        "intent_reward": 0.03,
+        "delta_reward": 0.0579,
+        "step_reward": 0.0935,
+        "intent_channels": {
+          "patience_bonus": 0.03,
+          "stress_penalty": -0.0,
+          "n_penalty": -0.0,
+          "fert_window_penalty": 0.0,
+          "irrigation_penalty": 0.0,
+          "harvest_urgency": 0.0
+        },
+        "delta_channels": {
+          "yield_progress": 0.06,
+          "stress_delta": 0.0,
+          "n_delta": -0.0021
+        }
       },
       "post_state": {
         "day": 112,
@@ -865,14 +1137,16 @@
         "dvs": 1.662,
         "growth_stage": "ripening",
         "lai": 5.54,
-        "twso": 4029.6,
+        "twso": 4070.5,
         "sm": 0.475,
         "water_stress": 1.0,
-        "n_availability": 0.938,
+        "n_availability": 0.948,
+        "n_leached": 0.0,
+        "slow_release_pool": 0.02,
         "total_water_cm": 0.0,
         "total_n_kg_ha": 60.0,
-        "total_cost": 90.0,
-        "budget_remaining": 710.0
+        "total_cost": 135.0,
+        "budget_remaining": 665.0
       },
       "is_terminal": false
     },
@@ -885,16 +1159,18 @@
         "dvs": 1.662,
         "growth_stage": "ripening",
         "lai": 5.54,
-        "twso": 4029.6,
+        "twso": 4070.5,
         "sm": 0.475,
         "water_stress": 1.0,
-        "n_availability": 0.938,
+        "n_availability": 0.948,
+        "n_leached": 0.0,
+        "slow_release_pool": 0.02,
         "total_water_cm": 0.0,
         "total_n_kg_ha": 60.0,
-        "total_cost": 90.0,
-        "budget_remaining": 710.0
+        "total_cost": 135.0,
+        "budget_remaining": 665.0
       },
-      "advisory_text": "ALERT: Ripening phase \u2014 NOT yet in harvest window. Wait for DVS >= 1.80 before harvesting. Week 17 of 40. Ripening (DVS 1.66). Soil moisture adequate at 47%. Soil well above optimal moisture range \u2014 no irrigation needed. 1.1 cm rain expected next 3 days. 4.7 cm over 7 days. Cumulative water: 0.0 cm, N applied: 60.0 kg/ha. Budget: $710 remaining (89%).",
+      "advisory_text": "ALERT: Ripening phase \u2014 NOT yet in harvest window. Wait for DVS >= 1.80 before harvesting. Week 17 of 40. Ripening (DVS 1.66). Soil moisture adequate at 47%. Soil well above optimal moisture range \u2014 no irrigation needed. 1.1 cm rain expected next 3 days. 4.7 cm over 7 days. Cumulative water: 0.0 cm, N applied: 60.0 kg/ha. Budget: $665 remaining (83%).",
       "oracle_recommendation": {
         "action_type": "wait",
         "amount": 0.0
@@ -906,11 +1182,24 @@
       },
       "action_matches_oracle": true,
       "amount_diff": 0.0,
-      "reward": 0.0227,
+      "reward": 0.0935,
       "reward_breakdown": {
-        "intent_reward": 0.0,
-        "delta_reward": 0.0379,
-        "step_reward": 0.0227
+        "intent_reward": 0.03,
+        "delta_reward": 0.0579,
+        "step_reward": 0.0935,
+        "intent_channels": {
+          "patience_bonus": 0.03,
+          "stress_penalty": -0.0,
+          "n_penalty": -0.0,
+          "fert_window_penalty": 0.0,
+          "irrigation_penalty": 0.0,
+          "harvest_urgency": 0.0
+        },
+        "delta_channels": {
+          "yield_progress": 0.06,
+          "stress_delta": 0.0,
+          "n_delta": -0.0021
+        }
       },
       "post_state": {
         "day": 119,
@@ -918,14 +1207,16 @@
         "dvs": 1.796,
         "growth_stage": "ripening",
         "lai": 4.68,
-        "twso": 5330.9,
+        "twso": 5386.2,
         "sm": 0.478,
         "water_stress": 1.0,
-        "n_availability": 0.927,
+        "n_availability": 0.938,
+        "n_leached": 0.0,
+        "slow_release_pool": 0.01,
         "total_water_cm": 0.0,
         "total_n_kg_ha": 60.0,
-        "total_cost": 90.0,
-        "budget_remaining": 710.0
+        "total_cost": 135.0,
+        "budget_remaining": 665.0
       },
       "is_terminal": false
     },
@@ -938,16 +1229,18 @@
         "dvs": 1.796,
         "growth_stage": "ripening",
         "lai": 4.68,
-        "twso": 5330.9,
+        "twso": 5386.2,
         "sm": 0.478,
         "water_stress": 1.0,
-        "n_availability": 0.927,
+        "n_availability": 0.938,
+        "n_leached": 0.0,
+        "slow_release_pool": 0.01,
         "total_water_cm": 0.0,
         "total_n_kg_ha": 60.0,
-        "total_cost": 90.0,
-        "budget_remaining": 710.0
+        "total_cost": 135.0,
+        "budget_remaining": 665.0
       },
-      "advisory_text": "ALERT: Ripening phase \u2014 NOT yet in harvest window. Wait for DVS >= 1.80 before harvesting. Week 18 of 40. Ripening (DVS 1.80). Soil moisture adequate at 48%. Soil well above optimal moisture range \u2014 no irrigation needed. 0.2 cm rain expected next 3 days. 2.8 cm over 7 days. Cumulative water: 0.0 cm, N applied: 60.0 kg/ha. Budget: $710 remaining (89%).",
+      "advisory_text": "ALERT: Ripening phase \u2014 NOT yet in harvest window. Wait for DVS >= 1.80 before harvesting. Week 18 of 40. Ripening (DVS 1.80). Soil moisture adequate at 48%. Soil well above optimal moisture range \u2014 no irrigation needed. 0.2 cm rain expected next 3 days. 2.8 cm over 7 days. Cumulative water: 0.0 cm, N applied: 60.0 kg/ha. Budget: $665 remaining (83%).",
       "oracle_recommendation": {
         "action_type": "wait",
         "amount": 0.0
@@ -959,11 +1252,24 @@
       },
       "action_matches_oracle": true,
       "amount_diff": 0.0,
-      "reward": 0.0227,
+      "reward": 0.0935,
       "reward_breakdown": {
-        "intent_reward": 0.0,
-        "delta_reward": 0.0379,
-        "step_reward": 0.0227
+        "intent_reward": 0.03,
+        "delta_reward": 0.0579,
+        "step_reward": 0.0935,
+        "intent_channels": {
+          "patience_bonus": 0.03,
+          "stress_penalty": -0.0,
+          "n_penalty": -0.0,
+          "fert_window_penalty": 0.0,
+          "irrigation_penalty": 0.0,
+          "harvest_urgency": 0.0
+        },
+        "delta_channels": {
+          "yield_progress": 0.06,
+          "stress_delta": 0.0,
+          "n_delta": -0.0021
+        }
       },
       "post_state": {
         "day": 126,
@@ -971,14 +1277,16 @@
         "dvs": 1.924,
         "growth_stage": "ripening",
         "lai": 3.6,
-        "twso": 6417.1,
+        "twso": 6484.8,
         "sm": 0.48,
         "water_stress": 1.0,
-        "n_availability": 0.917,
+        "n_availability": 0.927,
+        "n_leached": 0.0,
+        "slow_release_pool": 0.01,
         "total_water_cm": 0.0,
         "total_n_kg_ha": 60.0,
-        "total_cost": 90.0,
-        "budget_remaining": 710.0
+        "total_cost": 135.0,
+        "budget_remaining": 665.0
       },
       "is_terminal": false
     },
@@ -991,16 +1299,18 @@
         "dvs": 1.924,
         "growth_stage": "ripening",
         "lai": 3.6,
-        "twso": 6417.1,
+        "twso": 6484.8,
         "sm": 0.48,
         "water_stress": 1.0,
-        "n_availability": 0.917,
+        "n_availability": 0.927,
+        "n_leached": 0.0,
+        "slow_release_pool": 0.01,
         "total_water_cm": 0.0,
         "total_n_kg_ha": 60.0,
-        "total_cost": 90.0,
-        "budget_remaining": 710.0
+        "total_cost": 135.0,
+        "budget_remaining": 665.0
       },
-      "advisory_text": "ALERT: Crop approaching full maturity \u2014 harvest window (DVS 1.80-2.00) is open and narrowing. Week 19 of 40. Ripening (DVS 1.92). Soil moisture adequate at 48%. Soil well above optimal moisture range \u2014 no irrigation needed. 0.4 cm rain expected next 3 days. 1.7 cm over 7 days. Cumulative water: 0.0 cm, N applied: 60.0 kg/ha. Budget: $710 remaining (89%).",
+      "advisory_text": "ALERT: Crop approaching full maturity \u2014 harvest window (DVS 1.80-2.00) is open and narrowing. Week 19 of 40. Ripening (DVS 1.92). Soil moisture adequate at 48%. Soil well above optimal moisture range \u2014 no irrigation needed. 0.4 cm rain expected next 3 days. 1.7 cm over 7 days. Cumulative water: 0.0 cm, N applied: 60.0 kg/ha. Budget: $665 remaining (83%).",
       "oracle_recommendation": {
         "action_type": "harvest",
         "amount": 0.0
@@ -1008,15 +1318,15 @@
       "llm_decision": {
         "action_type": "harvest",
         "amount": 0,
-        "raw_response": "{\"action_type\":\"harvest\",\"amount\":0}"
+        "raw_response": "{\"action_type\":\"harvest\", \"amount\":0}"
       },
       "action_matches_oracle": true,
       "amount_diff": 0.0,
-      "reward": 0.9588,
+      "reward": 0.9446,
       "reward_breakdown": {},
       "post_state": null,
       "is_terminal": true
     }
   ],
-  "system_prompt": "Wheat crop advisor. 1 step=1 week. Reply ONLY with JSON: {\"action_type\":\"...\",\"amount\":...}\n\nRULE ZERO: If fert_count=2/2, NEVER fertilize again \u2014 skip to step 3.\n\nCHECK IN ORDER EACH STEP:\n\n1. HARVEST \u2014 NEVER harvest below DVS 1.80, even if growth_stage says \"ripening\". If the observation shows an exact numeric DVS, compare that number directly and do not round it up: 1.799 or 1.796 is still below 1.80, so choose WAIT. Ripening alone is not enough to harvest. Only harvest when the exact shown DVS is >=1.80. If DVS hidden: inspect_crop to learn exact DVS. On hidden tiers, only harvest when DVS>=1.80 is confirmed by inspection or advisory explicitly says the \"harvest window\" is open. MUST harvest explicitly; auto-harvest@DVS2.0=20% credit.\n\n2. FERTILIZE \u2014 ONLY when fert_count<2 AND in_fert_window is OPTIMAL or LATE.\n If in_fert_window=EARLY \u2192 WAIT. The crop is in the window but not yet at target DVS. Waiting improves timing score.\n If in_fert_window=OPTIMAL \u2192 fertilize NOW. Best timing.\n If in_fert_window=LATE \u2192 fertilize NOW before window closes.\n If in_fert_window=YES (hidden tiers) \u2192 check advisory for timing hints: \"Early in window\"\u2192WAIT, \"Near optimal\"\u2192fertilize, \"Late in window\"\u2192fertilize.\n Strategy: you have exactly 2 fert slots across 2 windows. Apply a larger dose in window 1, a smaller top-up in window 2.\n Dose by nitrogen status (5 bands):\n  Tier1: n_avail\u22650.9\u2192SKIP(wait), 0.8-0.9\u219215kg, 0.65-0.8\u219230kg, 0.5-0.65\u219245kg, <0.5\u219250kg\n  Tier2/3: \"surplus\"\u2192SKIP(wait), \"adequate\"\u219215kg, \"moderate\"\u219230kg, \"low\"\u219245kg, \"very_low\"\u219250kg\n After fertilizing, check the Dose feedback line \u2014 it tells you if you dosed correctly.\n Yield is 35% of your score \u2014 prioritize crop nutrition. Stay within budget but don't under-fertilize.\n\n3. IRRIGATE \u2014 Tier1: moisture<0.28 & rain3d<0.3\u2192irrigate. Tier2/3: moisture_band=\"low\"/\"critical\" & no rain forecast. Dose: 3cm default, or sm_gap_to_optimal\u00d790 if known.\n\n4. INSPECT (tier2/3 only) \u2014 inspect does NOT cost a week \u2014 you get results immediately and act on them next step. inspect_soil($10): reveals EXACT nitrogen level. inspect_crop($20): reveals EXACT DVS. Results persist in all future observations as SOIL REPORT / CROP REPORT \u2014 use them to calibrate subsequent decisions. Budget is the only limit on inspects.\n\n5. WAIT \u2014 if nothing above applies. Waiting when crop is healthy is correct.\n\nPositive reward=good decision. Negative reward=wrong action, bad timing, or wasteful spend. JSON only."
+  "system_prompt": "Wheat crop advisor. 1 step=1 week. Reply ONLY with JSON: {\"action_type\":\"...\",\"amount\":...}\n\nRULE ZERO: If fert_count=2/2, NEVER fertilize again \u2014 skip to step 3.\n\nCHECK IN ORDER EACH STEP:\n\n1. HARVEST \u2014 NEVER harvest below DVS 1.80, even if growth_stage says \"ripening\". If the observation shows an exact numeric DVS, compare that number directly and do not round it up: 1.799 or 1.796 is still below 1.80, so choose WAIT. Ripening alone is not enough to harvest. Only harvest when the exact shown DVS is >=1.80. If DVS hidden: inspect_crop to learn exact DVS. On hidden tiers, only harvest when DVS>=1.80 is confirmed by inspection or advisory explicitly says the \"harvest window\" is open. MUST harvest explicitly; auto-harvest@DVS2.0=20% credit.\n\n2. FERTILIZE \u2014 ONLY when fert_count<2 AND in_fert_window is OPTIMAL or LATE.\n If in_fert_window=EARLY \u2192 WAIT. The crop is in the window but not yet at target DVS. Waiting improves timing score.\n If in_fert_window=OPTIMAL \u2192 fertilize NOW. Best timing.\n If in_fert_window=LATE \u2192 fertilize NOW before window closes.\n If in_fert_window=YES (hidden tiers) \u2192 check advisory for timing hints: \"Early in window\"\u2192WAIT, \"Near optimal\"\u2192fertilize, \"Late in window\"\u2192fertilize.\n Strategy: you have exactly 2 fert slots across 2 windows. Apply a larger dose in window 1, a smaller top-up in window 2.\n NEW: Two fertilize types:\n  \"fertilize\" = cheap, full immediate N boost, but N leaches if soil wet or rain coming.\n  \"fertilize_slow\" = 1.5\u00d7 cost, resists leaching. Use when rain forecast >0.5cm.\n  Rule: rain3d>0.5 \u2192 fertilize_slow. rain3d<0.2 \u2192 regular fertilize. Between \u2192 judgment call.\n  The advisory will warn you about leaching risk when conditions are wet.\n Dose by nitrogen status (5 bands):\n  Tier1: n_avail\u22650.9\u2192SKIP(wait), 0.8-0.9\u219215kg, 0.65-0.8\u219230kg, 0.5-0.65\u219245kg, <0.5\u219250kg\n  Tier2/3: \"surplus\"\u2192SKIP(wait), \"adequate\"\u219215kg, \"moderate\"\u219230kg, \"low\"\u219245kg, \"very_low\"\u219250kg\n After fertilizing, check the Dose feedback line \u2014 it tells you if you dosed correctly.\n Yield is 35% of your score \u2014 prioritize crop nutrition. Stay within budget but don't under-fertilize.\n\n3. IRRIGATE \u2014 Tier1: moisture<0.28 & rain3d<0.3\u2192irrigate. Tier2/3: moisture_band=\"low\"/\"critical\" & no rain forecast. Dose: 3cm default, or sm_gap_to_optimal\u00d790 if known.\n\n4. INSPECT (tier2/3 only) \u2014 inspect does NOT cost a week \u2014 you get results immediately and act on them next step. inspect_soil($10): reveals EXACT nitrogen level. inspect_crop($20): reveals EXACT DVS. Results persist in all future observations as SOIL REPORT / CROP REPORT \u2014 use them to calibrate subsequent decisions. Budget is the only limit on inspects.\n\n5. WAIT \u2014 if nothing above applies. Waiting when crop is healthy is correct.\n\nPositive reward=good decision. Negative reward=wrong action, bad timing, or wasteful spend. JSON only."
 }

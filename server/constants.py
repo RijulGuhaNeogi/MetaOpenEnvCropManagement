@@ -60,6 +60,8 @@ MAX_STEPS = 60                     # Safety cap on episode length (steps)
 # ---------------------------------------------------------------------------
 REWARD_INTENT_WEIGHT = 0.4         # Weight for agronomic-intent reward
 REWARD_DELTA_WEIGHT = 0.6          # Weight for observed-state-change reward
+STEP_REWARD_SCALE = 2.0            # Multiplier applied after blending intent+delta
+                                    # so trajectory sum is comparable to terminal reward
 
 # ---------------------------------------------------------------------------
 # Step reward clamp bounds (safety net after blending intent + delta)
