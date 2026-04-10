@@ -5,7 +5,7 @@ CropObservation / CropState deserialization. Used by agent/inference.py for
 multi-step episodes over WebSocket (the HTTP endpoints are stateless).
 
 Usage:
-    sync_client = CropEnvClient(base_url="http://localhost:8000").sync()
+    sync_client = CropEnvClient(base_url="http://localhost:7860").sync()
     with sync_client:
         result = sync_client.reset(seed=42, task_id=1)
         while not result.done:

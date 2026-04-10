@@ -81,7 +81,7 @@ All models use Pydantic `BaseModel` with `extra="forbid"` and inherit from OpenE
   - `/grader` (POST) — grades an episode given metrics: returns `{score, breakdown}`
   - `/baseline` (GET) — deterministic greedy baseline scores for all tasks (seed=42, cached)
   - `/ceiling` (GET) — deterministic oracle ceiling scores for all tasks (seed=42, cached)
-- Entry point: `uvicorn server.app:app --host 0.0.0.0 --port 8000`
+- Entry point: `uvicorn server.app:app --host 0.0.0.0 --port 7860`
 
 ### 3.3 Environment Interface — `server/environment.py`
 

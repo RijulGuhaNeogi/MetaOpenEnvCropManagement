@@ -7,7 +7,7 @@ Uses the competition-mandated environment variables:
   MODEL_NAME    – model identifier
   API_KEY       – authentication token (evaluator injects API_KEY; HF_TOKEN as fallback)
 
-Can run against a local server (default http://localhost:8000) or a
+Can run against a local server (default http://localhost:7860) or a
 remote HuggingFace Space URL passed via ENV_URL.
 
 Uses the WebSocket-based EnvClient for multi-step episodes.

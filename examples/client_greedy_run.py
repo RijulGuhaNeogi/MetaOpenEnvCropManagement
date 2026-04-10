@@ -19,7 +19,7 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--base-url",
-        default="http://localhost:8000",
+        default="http://localhost:7860",
         help="OpenEnv server base URL.",
     )
     parser.add_argument("--task-id", type=int, default=1, help="Task id to run.")

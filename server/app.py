@@ -11,7 +11,7 @@ episodes, use the WebSocket endpoint (/ws), which maintains a persistent
 session across steps.
 
 Usage:
-    uvicorn server.app:app --host 0.0.0.0 --port 8000
+    uvicorn server.app:app --host 0.0.0.0 --port 7860
 """
 from typing import Any
 
@@ -119,7 +119,7 @@ def run_baseline():
         results[task_id] = {
             "task_id": task_id,
             "name": TASKS[task_id]["name"],
-            "score": obs.reward,
+            "score": obs.rubric_reward if obs.rubric_reward is not None else obs.reward,
             "steps": steps,
         }
 
@@ -152,7 +152,7 @@ def run_ceiling():
         results[task_id] = {
             "task_id": task_id,
             "name": TASKS[task_id]["name"],
-            "score": obs.reward,
+            "score": obs.rubric_reward if obs.rubric_reward is not None else obs.reward,
             "steps": steps,
         }
 
@@ -169,7 +169,7 @@ def run_ceiling():
 def main():
     import uvicorn
 
-    uvicorn.run("server.app:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("server.app:app", host="0.0.0.0", port=7860, reload=True)
 
 
 if __name__ == "__main__":
