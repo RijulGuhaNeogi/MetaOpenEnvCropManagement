@@ -68,6 +68,9 @@ The codebase is organized into **four logical layers**, each with a clear respon
 |-------|------|-----------|---------|
 | `CropAction` | `Action` | `action_type` (str), `amount` (float) | Agent's weekly decision |
 | `CropObservation` | `Observation` | 12 nested dicts: crop/soil/weather/resources/control_features/conflicts + task context + `dose_hint` | Rich observation for LLM or RL |
+
+**Control features** (in `CropObservation.control_features`): `moisture_gap_to_target`, `forecast_rain_3d`, `forecast_rain_7d`, `days_since_last_irrigation`, `days_since_last_fertilization`, `fertilizer_events_count`, `cumulative_n_applied`, `budget_remaining_ratio`, `rooting_depth_cm`, `dvs_distance_to_next_fertilizer_window`, `estimated_budget_to_finish`.
+
 | `CropState` | `State` | Full simulator state + episode tracking + `maturity_reached_step`, `last_soil_report`, `last_crop_report` | Serializable checkpoint |
 
 All models use Pydantic `BaseModel` with `extra="forbid"` and inherit from OpenEnv base types.
@@ -305,7 +308,7 @@ actions receive maximum reward:
 
 ### 3.12 Training Adapter — `agent/training_adapter.py`
 
-Discrete action vocabulary (8 buckets) for RL training:
+Discrete action vocabulary (11 actions) for RL training:
 
 | Action ID | Maps To | Amount |
 |-----------|---------|--------|
@@ -313,6 +316,7 @@ Discrete action vocabulary (8 buckets) for RL training:
 | harvest | harvest | 0 |
 | irrigate_small / medium / large | irrigate | 2 / 5 / 8 cm |
 | fertilize_small / medium / large | fertilize | 15 / 30 / 50 kg |
+| fertilize_slow_small / medium / large | fertilize_slow | 15 / 30 / 50 kg |
 
 ### 3.13 Benchmark Sweep — `agent/benchmark_sweep.py`
 
@@ -557,9 +561,85 @@ models.py ← (no internal deps)
 
 ---
 
-## 8. Known Limitations & Improvement Areas
+## 8. Observability Tiers
 
-### Current Architecture Limitations
+The three tasks form a **reasoning curriculum** — not just a difficulty ladder. Observability tiers control what the agent can see:
+
+| Tier | Task | Numeric Fields | Weather | Bands/NL | Inspect Value |
+|------|------|----------------|---------|----------|---------------|
+| 1 | Easy (NL) | All (DVS, SM, N, LAI, biomass, yield) | Full numeric per-day | — | Low (all data visible) |
+| 2 | Medium (Iowa) | Hidden: DVS, SM | Exact per-day NL text | `sm_band`, `n_visual`, `lai_band` | Medium |
+| 3 | Hard (Punjab) | Most hidden | Bucketed NL summary | All bands, coarsened | High (budget tradeoff) |
+
+**Why Task 3 is genuinely hard:**
+- Punjab has minimal rainfall during the wheat season — irrigation is essential but expensive
+- Budget is tight ($300) — every irrigation/fertilization decision must be justified
+- Most precise sensor readings are hidden — the agent sees coarsened bands and bucketed weather
+- Two inspect actions (`inspect_soil` at $10, `inspect_crop` at $20) reveal exact values but cost budget; results persist across the episode
+- Scoring weights yield (35%), water efficiency (20%), cost efficiency (18%), timing (15%), and harvest timing (12%) — no single strategy dominates
+- An LLM agent that strategically inspects and reasons over NL observations can outperform the greedy heuristic, which operates blindly on midpoint estimates
+
+---
+
+## 9. Anti-Exploit Design
+
+| Mechanism | Detail |
+|-----------|--------|
+| **Yield-gated efficiency** | Water and cost efficiency scores are multiplied by `max(yield_score, 0.1)`. A do-nothing agent cannot score high on efficiency. |
+| **Crop vigor scaling** | Delta rewards scale with `twso / target`. Late-season actions on a failing crop get diminished credit. |
+| **Inspection budget pressure** | Inspect reward is scaled by `budget_remaining / (cost × 10)`. Repeated inspections on a drained budget yield near-zero reward. |
+| **Fertilizer hard cap** | More than 2 fertilizer applications trigger a hard penalty (−0.04 to −0.14), regardless of timing or dose quality. |
+| **Auto-harvest penalty** | If the agent fails to harvest explicitly, auto-termination applies a 0.5× multiplier to the harvest-timing component (only 20% credit vs 100%). Combined with shattering losses, passivity is doubly penalized. |
+| **Grain shattering** | ~23% yield loss per 7-day step past DVS 1.85 provides a physics-based penalty for harvest delay, not an arbitrary rule. |
+
+---
+
+## 10. RL Learnability
+
+This environment is designed to produce a **learnable reward landscape**, not just a grading function:
+
+- **Reward–grader alignment:** Step-level intent and delta rewards push the same behavior the terminal grader scores.
+- **Shaped, not sparse:** Every action type produces a non-zero reward signal. Wait: [−0.15, +0.04]; irrigate/fertilize: [−0.14, +0.16]; harvest: [+0.20, +0.25] at optimal DVS.
+- **Smooth gradients:** Fertilize reward peaks sharply at target DVS (0.30, 0.60) with linear decay. Irrigation reward scales with dose accuracy and soil dryness.
+- **Multi-signal terminal:** 70% trajectory grade + 30% harvest-timing signal.
+- **Curriculum-ready:** Tier 1 → Tier 2 → Tier 3 with increasing information scarcity.
+- **Consistent constants:** All threshold values centralized in `server/constants.py`.
+- **Trajectory export:** `TRAJECTORY_OUTPUT` env var enables JSONL export with `(observation, action, reward, next_observation, done, metadata)` tuples.
+- **Training adapter:** 11-action discrete mapping in `agent/training_adapter.py`.
+
+---
+
+## 11. Reward-Alignment Probe Scenarios
+
+Five purpose-built edge-case scenarios validate that dense step rewards push the same direction as the terminal grader:
+
+| Probe | What It Tests |
+|-------|---------------|
+| `over_irrigation_trap` | Agent faces saturated soil + forecast rain — reward must penalize unnecessary irrigation |
+| `late_fertilizer_temptation` | DVS past optimal window — fertilizing wastes budget with minimal yield benefit |
+| `budget_starvation` | Budget nearly exhausted — agent must choose between inspect (information) and real action (intervention) |
+| `harvest_hesitation` | Crop is mature and shattering has begun — every wait step must carry escalating penalty |
+| `drought_rescue` | Severe water stress mid-season — immediate irrigation must produce a large positive delta reward |
+
+Activate via `reset(..., probe_name="harvest_hesitation")`. Probes share the same reward and grading code as public tasks.
+
+---
+
+## 12. Rubric System (RFC 004)
+
+The environment follows the [OpenEnv RFC 004](https://github.com/meta-pytorch/OpenEnv/blob/main/rfcs/004-rubrics.md) convention:
+
+- **`obs.reward`** — Dense per-step signal (intent + delta blend) for RL training
+- **`obs.rubric_reward`** — Trajectory-level score from the grader at terminal steps; `None` on intermediate steps
+- **`obs.metadata["rubric_breakdown"]`** — Per-metric scores at terminal step (yield, water, cost, timing, harvest)
+
+Provided by `CropManagementRubric` (in `server/rubric.py`), a thin wrapper around the deterministic grader.
+
+---
+
+## 13. Known Limitations & Improvement Areas
+
+### Architecture Limitations
 
 1. **`server/` is a flat directory** — mixes environment interface (`environment.py`) and domain logic (`crop_sim.py`, `scenarios.py`, `grader.py`, `reward.py`, `tasks.py`). Acceptable at current size but should be sub-packaged if more simulation modules are added (e.g., PCSE integration).
 
@@ -584,7 +664,7 @@ models.py ← (no internal deps)
 
 ---
 
-## 9. Design Decisions
+## 14. Design Decisions
 
 | Decision | Rationale |
 |----------|-----------|
