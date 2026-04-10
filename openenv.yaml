@@ -12,6 +12,7 @@ author: Team Hijibiji
 
 environment:
   type: openenv
+  app_port: 7860
   entry_point: server.environment:CropEnvironment
   action_model: models:CropAction
   observation_model: models:CropObservation

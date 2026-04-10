@@ -364,25 +364,25 @@ pip install -r requirements.txt
 ### Start the Server
 
 ```bash
-uvicorn server.app:app --host 0.0.0.0 --port 8000
+uvicorn server.app:app --host 0.0.0.0 --port 7860
 ```
 
 ### Verify
 
 ```bash
-curl http://localhost:8000/health
+curl http://localhost:7860/health
 # {"status": "healthy"}
 
-curl http://localhost:8000/tasks
+curl http://localhost:7860/tasks
 # {"tasks": [{"id": 1, "name": "Basic Crop Growth", ...}, ...]}
 
-curl http://localhost:8000/baseline
+curl http://localhost:7860/baseline
 # Deterministic greedy baseline scores for all 3 tasks (cached, seed=42)
 
-curl http://localhost:8000/ceiling
+curl http://localhost:7860/ceiling
 # Deterministic oracle ceiling scores for all 3 tasks (cached, seed=42)
 
-curl -X POST http://localhost:8000/grader -H 'Content-Type: application/json' \
+curl -X POST http://localhost:7860/grader -H 'Content-Type: application/json' \
   -d '{"actual_yield": 5000, "target_yield": 8000, "total_water": 10, "total_n": 60, "total_cost": 100, "budget": 800, "harvest_dvs": 1.9, "harvested": true, "actions_taken": [], "task_id": 1}'
 # {"score": ..., "breakdown": {...}}
 ```
@@ -443,7 +443,7 @@ python inference.py
 Minimal client example against a running server:
 
 ```bash
-python examples/client_greedy_run.py --base-url http://localhost:8000 --task-id 1 --seed 42
+python examples/client_greedy_run.py --base-url http://localhost:7860 --task-id 1 --seed 42
 ```
 
 ### Environment Variables
@@ -454,7 +454,7 @@ python examples/client_greedy_run.py --base-url http://localhost:8000 --task-id 
 | `MODEL_NAME` | For LLM mode | Model identifier |
 | `API_KEY` | For LLM mode | API authentication token (evaluator injects this) |
 | `HF_TOKEN` | No | Fallback for `API_KEY` — accepted for local development |
-| `ENV_URL` | No | Server URL (default: `http://localhost:8000`) |
+| `ENV_URL` | No | Server URL (default: `http://localhost:7860`) |
 | `TASK_ID` | No | Run a single task by ID (default: all 3) |
 | `SEED` | No | Random seed for reproducibility (default: 42) |
 | `TRAJECTORY_OUTPUT` | No | Optional JSONL path prefix for transition export |
@@ -493,9 +493,20 @@ ENV_URL=http://localhost:7860 python inference.py
 
 ```bash
 # After server is running:
-curl http://localhost:8000/baseline
+curl http://localhost:7860/baseline
 # Returns deterministic greedy scores for all 3 tasks
 ```
+
+### Pre-Submission Validation
+
+```bash
+bash scripts/validate-submission.sh https://rijulgn-crop-management-env.hf.space
+```
+
+This checks three things before re-submission:
+- the live Hugging Face Space responds to `/reset`
+- the Docker image builds successfully
+- `openenv validate` is available and passes in the repo root
 
 ## Testing
 
