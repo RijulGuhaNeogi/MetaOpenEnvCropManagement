@@ -1,0 +1,15 @@
+# Exclude development-only files and directories from OpenEnv validation/package noise.
+tests/
+docs/
+examples/
+.git/
+.github/
+.pytest_cache/
+__pycache__/
+agent/__pycache__/
+server/__pycache__/
+.env
+.env.example
+_analytics_task1.json
+_analytics_task2.json
+_analytics_task3.json
