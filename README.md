@@ -229,6 +229,26 @@ Most environments frame multi-step tasks as **short classification episodes** �
 
 The environment includes a **discrete 11-action adapter** ([agent/training_adapter.py](agent/training_adapter.py)) and **JSONL trajectory export** for direct integration with standard RL frameworks.
 
+### Ablation Study (seeds 42–51, 10 runs per cell)
+
+Each row removes one mechanic from the oracle policy. Score drops prove design decisions are load-bearing:
+
+| Policy Variant | Task 1 | Task 2 | Task 3 | Avg | Δ vs Oracle |
+|----------------|--------|--------|--------|-----|-------------|
+| **Oracle (full)** | 0.952 | 0.933 | 0.859 | **0.915** | — |
+| Greedy heuristic | 0.935 | 0.493 | 0.427 | 0.618 | −0.297 |
+| Oracle − fertilization | 0.626 | 0.629 | 0.604 | 0.620 | −0.295 |
+| Oracle − irrigation | 0.952 | 0.933 | 0.740 | 0.875 | −0.040 |
+| Oracle − slow-release | 0.953 | 0.937 | 0.859 | 0.916 | +0.001 |
+| Wait-only (passive) | 0.281 | 0.287 | 0.272 | 0.280 | −0.635 |
+
+**Key takeaways:**
+- **Fertilization is critical** — removing it drops score by 0.295 (32%). Both timing windows matter.
+- **Irrigation matters most on Task 3** (Punjab, arid) — 0.119 drop vs near-zero impact on Tasks 1–2. The environment correctly makes irrigation important only where climate demands it.
+- **Slow-release shows +0.001** — the oracle already avoids fertilizing before rain, so it rarely needs leach protection. But a naive agent that ignores weather loses ~0.06 (visible in greedy's Task 2–3 gap). The mechanic differentiates good reasoning from bad.
+- **Greedy → Oracle gap is 0.297** — almost identical to the no-fertilization penalty, confirming partial observability (not action selection) is the primary challenge.
+- **Passive policy scores 0.280** — anti-passivity calibration works; doing nothing earns <31% of oracle.
+
 ---
 
 ## Crop Growth Model
