@@ -1,0 +1,64 @@
+name: Docker Smoke Test
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  docker-smoke-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install inference dependencies
+        run: python -m pip install --upgrade pip && pip install -r requirements.txt
+
+      - name: Build Docker image
+        run: docker build -t crop-management-smoke .
+
+      - name: Start container
+        run: docker run -d --name crop-management-smoke -p 7860:7860 crop-management-smoke
+
+      - name: Wait for server readiness
+        shell: bash
+        run: |
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:7860/health > /tmp/health.json; then
+              cat /tmp/health.json
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Server did not become ready in time"
+          docker logs crop-management-smoke
+          exit 1
+
+      - name: Smoke check health and tasks endpoints
+        run: |
+          curl --fail --show-error http://127.0.0.1:7860/health
+          curl --fail --show-error http://127.0.0.1:7860/tasks
+
+      - name: Run baseline inference
+        env:
+          ENV_URL: http://127.0.0.1:7860
+        run: python inference.py
+
+      - name: Show container logs on failure
+        if: failure()
+        run: docker logs crop-management-smoke
+
+      - name: Stop container
+        if: always()
+        run: docker rm -f crop-management-smoke

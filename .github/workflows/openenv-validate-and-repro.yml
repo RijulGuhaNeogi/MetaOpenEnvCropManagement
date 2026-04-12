@@ -1,0 +1,67 @@
+name: OpenEnv Validate And Repro
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  openenv-validate-and-repro:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip && pip install -r requirements.txt && pip install -e .
+
+      - name: Run OpenEnv validation
+        run: openenv validate
+
+      - name: Start local server
+        shell: bash
+        run: |
+          nohup python -m uvicorn server.app:app --host 127.0.0.1 --port 7860 >/tmp/crop-management-server.log 2>&1 &
+          echo $! >/tmp/crop-management-server.pid
+
+      - name: Wait for local server
+        shell: bash
+        run: |
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:7860/health >/tmp/crop-management-health.json; then
+              cat /tmp/crop-management-health.json
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Server did not become ready in time"
+          cat /tmp/crop-management-server.log
+          exit 1
+
+      - name: Smoke check tasks endpoint
+        run: curl --fail --show-error http://127.0.0.1:7860/tasks
+
+      - name: Run seeded baseline reproducibility check
+        run: python scripts/baseline_repro_check.py --env-url http://127.0.0.1:7860 --seeds 42-44 --task-ids 1,2,3 --repeat 2
+
+      - name: Show server logs on failure
+        if: failure()
+        run: cat /tmp/crop-management-server.log
+
+      - name: Stop local server
+        if: always()
+        shell: bash
+        run: |
+          if [ -f /tmp/crop-management-server.pid ]; then
+            kill "$(cat /tmp/crop-management-server.pid)" || true
+          fi
