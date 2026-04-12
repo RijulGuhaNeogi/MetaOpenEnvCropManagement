@@ -13,7 +13,7 @@ import time
 import httpx
 import pytest
 
-from agent.inference import greedy_action
+from agent.policy import greedy_action
 from client import CropEnvClient
 from models import CropAction
 

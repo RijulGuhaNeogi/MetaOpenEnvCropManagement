@@ -24,10 +24,6 @@ from pathlib import Path
 
 log = logging.getLogger(__name__)
 
-from dotenv import load_dotenv
-
-load_dotenv(override=False)  # Auto-load .env file if present; never override evaluator-injected vars
-
 import httpx
 from openai import OpenAI
 
@@ -49,13 +45,9 @@ TASKS = [1, 2, 3]
 # we add a client-side guard as well)
 MAX_CLIENT_STEPS = 200
 
-# LLM usage tracking for cost / quota awareness
+# LLM usage tracking
 llm_calls = 0
 llm_fallbacks = 0
-llm_consecutive_errors = 0   # Stops calling LLM after N consecutive failures
-LLM_ERROR_THRESHOLD = 3      # Max consecutive errors before disabling LLM
-llm_last_error = ""
-llm_credit_exhausted = False
 
 # ---------------------------------------------------------------------------
 # LLM helper
@@ -270,15 +262,9 @@ def call_llm(obs, prev_action: str | None = None, prev_reward: float | None = No
     empty dict on any failure (network error, malformed response, etc.).
     The runtime falls back to the greedy heuristic when this returns {}.
     """
-    global llm_calls, llm_fallbacks, llm_consecutive_errors
-    global llm_last_error, llm_credit_exhausted
+    global llm_calls, llm_fallbacks
 
     if llm_client is None:
-        return {}
-
-    # Early-stop: if we've hit N consecutive errors (e.g. 402 credit exhaustion),
-    # skip LLM entirely for the rest of the run to avoid wasting time
-    if llm_consecutive_errors >= LLM_ERROR_THRESHOLD:
         return {}
 
     prompt = compress_observation(obs, prev_action=prev_action, prev_reward=prev_reward)
@@ -290,34 +276,20 @@ def call_llm(obs, prev_action: str | None = None, prev_reward: float | None = No
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": prompt},
             ],
-            temperature=0.1,
-            max_tokens=128,
+            temperature=0.0,
+            max_tokens=2048,
         )
         llm_calls += 1
-        llm_consecutive_errors = 0  # Reset on success
-        llm_last_error = ""
-        llm_credit_exhausted = False
     except Exception as e:
-        error_text = str(e)
-        llm_consecutive_errors += 1
         llm_fallbacks += 1
-        llm_last_error = error_text
-        llm_credit_exhausted = (
-            "Error code: 402" in error_text
-            or "depleted your monthly included credits" in error_text
-        )
-        if llm_consecutive_errors >= LLM_ERROR_THRESHOLD:
-            log.warning(
-                "LLM disabled after %d consecutive errors — "
-                "using greedy heuristic for remaining steps",
-                LLM_ERROR_THRESHOLD,
-            )
-        else:
-            log.warning("LLM error: %r — falling back to greedy heuristic", e)
+        print(f"[DEBUG] LLM error: {e}", file=sys.stderr, flush=True)
         return {}
 
     text = response.choices[0].message.content or "{}"
     text = text.strip()
+
+    # Strip <think>...</think> reasoning blocks (e.g. Qwen3)
+    text = re.sub(r"<think>[\s\S]*?</think>", "", text).strip()
 
     # Strip markdown code fences if present
     if text.startswith("```"):
@@ -978,20 +950,6 @@ def run():
         )
     if llm_calls or llm_fallbacks:
         log.info("LLM stats: %d calls, %d fallbacks", llm_calls, llm_fallbacks)
-        if llm_consecutive_errors >= LLM_ERROR_THRESHOLD:
-            if llm_credit_exhausted:
-                log.warning(
-                    "LLM credits exhausted after %d successful calls. "
-                    "Switched to greedy heuristic for remaining steps. "
-                    "Regenerate your HF token or wait for monthly credit reset.",
-                    llm_calls,
-                )
-            else:
-                log.warning(
-                    "LLM disabled after repeated errors and switched to greedy "
-                    "heuristic for remaining steps. Last error: %s",
-                    llm_last_error,
-                )
 
 
 if __name__ == "__main__":

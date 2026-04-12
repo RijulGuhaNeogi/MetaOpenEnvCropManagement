@@ -7,7 +7,7 @@ are extracted here.
 
 # ---------------------------------------------------------------------------
 # Fertilizer DVS windows and target amounts
-# Used by: server/reward.py, agent/inference.py
+# Used by: server/reward.py, agent/policy.py
 # CONSTRAINT: FERT_TARGET_DVS_N must lie within FERT_WINDOW_N
 # ---------------------------------------------------------------------------
 FERT_WINDOW_1 = (0.20, 0.40)       # DVS range for first fertilization
@@ -23,7 +23,7 @@ LEACH_RAIN_THRESHOLD = 0.5          # cm rain in 3d above which leaching risk is
 
 # ---------------------------------------------------------------------------
 # Soil moisture thresholds
-# Used by: server/reward.py, server/environment.py, agent/inference.py
+# Used by: server/reward.py, server/environment.py, agent/policy.py
 # ---------------------------------------------------------------------------
 SM_TARGET_LOW = 0.28               # Lower bound of ideal soil moisture band
 SM_TARGET_HIGH = 0.32              # Upper bound of ideal soil moisture band
@@ -72,7 +72,7 @@ STEP_REWARD_MAX = 0.9              # Best possible per-step reward
 
 # ---------------------------------------------------------------------------
 # Inspection action costs
-# Used by: server/environment.py, agent/inference.py
+# Used by: server/environment.py, agent/policy.py
 # ---------------------------------------------------------------------------
 INSPECT_SOIL_COST = 10             # Budget cost for inspect_soil action
 INSPECT_CROP_COST = 20             # Budget cost for inspect_crop action
@@ -99,7 +99,7 @@ LAI_MODERATE = 3.5                 # LAI below this = "moderate", above = "dense
 # ---------------------------------------------------------------------------
 # Growth stage DVS midpoint map (for greedy fallback on hidden-DVS tiers)
 # Labels match crop_sim.py growth_stage_name()
-# Used by: agent/inference.py
+# Used by: agent/policy.py
 # ---------------------------------------------------------------------------
 GROWTH_STAGE_DVS_MAP: dict[str, float] = {
     "emergence": 0.075,
@@ -112,7 +112,7 @@ GROWTH_STAGE_DVS_MAP: dict[str, float] = {
 
 # ---------------------------------------------------------------------------
 # SM band midpoint map (for greedy fallback on hidden-SM tiers)
-# Used by: agent/inference.py
+# Used by: agent/policy.py
 # ---------------------------------------------------------------------------
 SM_BAND_MIDPOINT: dict[str, float] = {
     "critical": 0.15,

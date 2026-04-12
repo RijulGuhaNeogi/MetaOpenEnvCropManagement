@@ -9,7 +9,7 @@ from __future__ import annotations
 import argparse
 
 from client import CropEnvClient
-from agent.inference import greedy_action
+from agent.policy import greedy_action
 from models import CropAction
 
 

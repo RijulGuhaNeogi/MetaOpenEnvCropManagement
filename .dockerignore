@@ -5,6 +5,8 @@ dist/
 build/
 .git/
 .gitignore
+.env
+.env.*
 .venv/
 venv/
 .vscode/

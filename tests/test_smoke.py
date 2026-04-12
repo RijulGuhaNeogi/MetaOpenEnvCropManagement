@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import pytest
 
-from agent.inference import oracle_action
+from agent.policy import oracle_action
 from models import CropAction, CropObservation, CropState
 from models import ControlFeatures
 from server.crop_sim import CROP_LIBRARY, PARTITION_TABLES, SOIL_LIBRARY, CropSimulator

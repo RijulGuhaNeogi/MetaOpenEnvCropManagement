@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 from statistics import mean, pstdev
 
-from agent.inference import oracle_action
+from agent.policy import oracle_action
 from models import CropAction
 from server.environment import CropEnvironment
 

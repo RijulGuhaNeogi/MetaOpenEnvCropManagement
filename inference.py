@@ -1,13 +1,28 @@
 #!/usr/bin/env python3
 """
-Competition inference script — Precision Agriculture Crop Management.
+COMPETITION ENTRYPOINT — Precision Agriculture Crop Management.
 
-MANDATORY ENV VARS:
-    API_BASE_URL   The API endpoint for the LLM.
-    MODEL_NAME     The model identifier to use for inference.
-    API_KEY        Authentication token (evaluator injects API_KEY; HF_TOKEN as fallback).
+This is the file executed by the OpenEnv evaluator (see openenv.yaml →
+inference.script). It orchestrates episodes and prints the mandatory
+[START]/[STEP]/[END] lines to stdout.
 
-STDOUT FORMAT:
+All intelligence (LLM calls, greedy heuristic, oracle baseline, prompt
+engineering, observation compression) lives in agent/policy.py. This file
+only handles the episode loop and output formatting — zero duplication.
+
+NOTHING IS HARDCODED — the evaluator injects its own API_KEY, API_BASE_URL,
+and MODEL_NAME via environment variables. The defaults below are fallbacks
+for local testing only.
+
+ENV VARS (set by the evaluator):
+    API_KEY        Authentication token for the LLM provider.
+    API_BASE_URL   Base URL for the OpenAI-compatible LLM endpoint.
+    MODEL_NAME     Model identifier (e.g. "nvidia/llama-3.1-nemotron-70b-instruct").
+    ENV_URL        Crop management server URL (default: http://localhost:7860).
+    TASK_ID        Run a single task (1, 2, or 3). Empty = run all.
+    SEED           Random seed (default: 42).
+
+STDOUT FORMAT (required by OpenEnv):
     [START] task=<task_name> env=crop_management model=<model_name>
     [STEP]  step=<n> action=<action_str> reward=<0.00> done=<true|false> error=<msg|null>
     [END]   success=<true|false> steps=<n> score=<0.000> rewards=<r1,r2,...,rn>
@@ -18,17 +33,11 @@ import os
 import sys
 from typing import List, Optional
 
-from dotenv import load_dotenv
-
-load_dotenv(override=False)  # never override evaluator-injected env vars
-
-from openai import OpenAI
-
 from client import CropEnvClient
 from models import CropAction
 
-# Import reusable logic from the agent module (no duplication)
-from agent.inference import (
+# agent/policy.py holds all decision-making logic (LLM, greedy, oracle)
+from agent.policy import (
     call_llm,
     greedy_action,
     oracle_action,
@@ -39,13 +48,14 @@ from agent.inference import (
 )
 
 # ---------------------------------------------------------------------------
-# Configuration (competition-mandated env vars)
+# Configuration — all from env vars; defaults are for LOCAL testing only.
+# The evaluator always sets API_KEY, API_BASE_URL, MODEL_NAME.
 # ---------------------------------------------------------------------------
 API_KEY = os.getenv("API_KEY") or os.getenv("HF_TOKEN")
 API_BASE_URL = os.getenv("API_BASE_URL") or "https://router.huggingface.co/v1"
 MODEL_NAME = os.getenv("MODEL_NAME") or "Qwen/Qwen2.5-72B-Instruct"
 ENV_URL = os.getenv("ENV_URL", "http://localhost:7860")
-TASK_ID = os.getenv("TASK_ID", "")  # empty = run all 3
+TASK_ID = os.getenv("TASK_ID", "")  # empty = run all 3 tasks
 SEED = int(os.getenv("SEED", "42"))
 BENCHMARK = "crop_management"
 SUCCESS_THRESHOLD = 0.1

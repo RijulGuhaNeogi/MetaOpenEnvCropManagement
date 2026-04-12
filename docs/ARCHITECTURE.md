@@ -12,7 +12,7 @@ This project is a deterministic, multi-step precision agriculture environment bu
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                        AGENT LAYER                                      │
-│  agent/inference.py  ── LLM policy + oracle baseline + orchestration   │
+│  agent/policy.py  ── LLM policy + oracle baseline + orchestration   │
 │  agent/training_adapter.py ── discrete RL action vocabulary            │
 │  agent/benchmark_sweep.py  ── multi-seed evaluation                    │
 └───────────────────────────────┬─────────────────────────────────────────┘
@@ -54,7 +54,7 @@ The codebase is organized into **four logical layers**, each with a clear respon
 | **Data Models** | Pydantic schemas for action, observation, state | `models.py` | OpenEnv core types |
 | **Server / Environment** | OpenEnv interface, HTTP/WS endpoints, episode loop | `server/app.py`, `server/environment.py` | Models, Simulation Domain |
 | **Simulation Domain** | Pure crop science: growth model, weather, grading, rewards | `server/crop_sim.py`, `server/scenarios.py`, `server/tasks.py`, `server/grader.py`, `server/reward.py` | Models (for type hints only) |
-| **Agent / Training** | Policies, RL adapters, evaluation | `agent/inference.py`, `agent/training_adapter.py`, `agent/benchmark_sweep.py` | Models, Client |
+| **Agent / Training** | Policies, RL adapters, evaluation | `agent/policy.py`, `agent/training_adapter.py`, `agent/benchmark_sweep.py` | Models, Client |
 
 **Dependency rule:** Each layer depends only on layers below it. The Agent layer never imports from `server/` internals (except `benchmark_sweep.py` which uses `CropEnvironment` directly for fast local evaluation).
 
@@ -224,7 +224,7 @@ Terminal reward blend: `0.7 × trajectory_reward + 0.3 × normalized_harvest_ste
 - Methods: `reset()`, `step()`, `state`
 - Usage: `CropEnvClient(base_url="...").sync()` for synchronous operation
 
-### 3.10 Agent — `agent/inference.py`
+### 3.10 Agent — `agent/policy.py`
 
 Three policy paths:
 1. **LLM-only** — if API_KEY (or HF_TOKEN) + API_BASE_URL + MODEL_NAME are set
@@ -432,7 +432,7 @@ MetaHackathonPrep/
 │
 ├── agent/                         # Agent-side code (policies, training, evaluation)
 │   ├── __init__.py                # Package exports
-│   ├── inference.py               # LLM + greedy fallback + oracle ceiling helpers
+│   ├── policy.py                  # LLM + greedy fallback + oracle ceiling helpers
 │   ├── training_adapter.py        # Discrete RL action vocabulary (8 buckets)
 │   └── benchmark_sweep.py         # Multi-seed evaluation utility
 │
@@ -471,7 +471,7 @@ MetaHackathonPrep/
 | Task configuration | `server/tasks.py` | Simulation Domain |
 | Episode scoring | `server/grader.py` | Simulation Domain |
 | Per-step rewards | `server/reward.py` | Simulation Domain |
-| AI policies | `agent/inference.py` | Agent |
+| AI policies | `agent/policy.py` | Agent |
 | RL training adapter | `agent/training_adapter.py` | Agent |
 | Policy evaluation | `agent/benchmark_sweep.py` | Agent |
 | Container deployment | `Dockerfile` (root) | Infrastructure |
@@ -551,12 +551,12 @@ models.py ← (no internal deps)
   │
   ├── server/reward.py ← (no internal deps)
   │
-  ├── agent/inference.py ← models, client
+  ├── agent/policy.py ← models, client
   │
   ├── agent/training_adapter.py ← models
   │
   └── agent/benchmark_sweep.py ← models, server/environment,
-                                  agent/inference (oracle_action)
+                                  agent/policy (oracle_action)
 ```
 
 ---
@@ -643,7 +643,7 @@ Provided by `CropManagementRubric` (in `server/rubric.py`), a thin wrapper aroun
 
 1. **`server/` is a flat directory** — mixes environment interface (`environment.py`) and domain logic (`crop_sim.py`, `scenarios.py`, `grader.py`, `reward.py`, `tasks.py`). Acceptable at current size but should be sub-packaged if more simulation modules are added (e.g., PCSE integration).
 
-2. **`agent/inference.py` has multiple responsibilities** — LLM policy, greedy heuristic, trajectory export, and episode orchestration in one file. A future split into `llm_policy.py`, `greedy_policy.py`, `trajectory.py`, and `runner.py` would improve testability.
+2. **`agent/policy.py` has multiple responsibilities** — LLM policy, greedy heuristic, trajectory export, and episode orchestration in one file. A future split into `llm_policy.py`, `greedy_policy.py`, `trajectory.py`, and `runner.py` would improve testability.
 
 3. **Configuration partially externalized** — crop/soil parameters now live in `server/crop_params.py` (frozen dataclasses) with YAML overrides in `configs/`. Task definitions and weather parameters remain in code. Further extraction is possible but not currently needed.
 

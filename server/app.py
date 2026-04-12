@@ -105,7 +105,7 @@ def run_baseline():
     if _baseline_cache is not None:
         return _baseline_cache
 
-    from agent.inference import greedy_action
+    from agent.policy import greedy_action
 
     results = {}
     for task_id in sorted(TASKS.keys()):

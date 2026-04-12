@@ -41,8 +41,9 @@ Thumbs.db
 _*.py
 
 # Generated analytics
-_analytics_task*.json
+_analytics_*.json
 _analytics_archive/
+_tmp_*.jsonl
 
 # Submission diagnostics
 _analyze_rewards.py

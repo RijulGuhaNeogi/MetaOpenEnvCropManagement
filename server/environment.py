@@ -51,7 +51,7 @@ _oracle_action = None
 def _get_oracle_action():
     global _oracle_action
     if _oracle_action is None:
-        from agent.inference import oracle_action
+        from agent.policy import oracle_action
         _oracle_action = oracle_action
     return _oracle_action
 

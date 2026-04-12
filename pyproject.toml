@@ -14,7 +14,6 @@ dependencies = [
     "uvicorn~=0.41",
     "openai~=2.30",
     "httpx~=0.28",
-    "python-dotenv~=1.2",
     "pyyaml~=6.0",
 ]
 
