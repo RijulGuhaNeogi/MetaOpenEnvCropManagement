@@ -40,6 +40,9 @@ Thumbs.db
 # Temp scripts
 _*.py
 
+# Dev-only analytics runner
+scripts/run_llm_analytics.py
+
 # Generated analytics
 _analytics_*.json
 _analytics_archive/
