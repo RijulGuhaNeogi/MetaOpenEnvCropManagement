@@ -10,7 +10,7 @@ from agent.benchmark_sweep import build_result
 
 def main() -> None:
     task_ids = [1, 2, 3]
-    seeds = list(range(42, 45))
+    seeds = list(range(190, 193))
     result = build_result(task_ids, seeds)
 
     print("Direct benchmark example")

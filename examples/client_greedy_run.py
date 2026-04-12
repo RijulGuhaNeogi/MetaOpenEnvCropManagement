@@ -23,7 +23,7 @@ def _parse_args() -> argparse.Namespace:
         help="OpenEnv server base URL.",
     )
     parser.add_argument("--task-id", type=int, default=1, help="Task id to run.")
-    parser.add_argument("--seed", type=int, default=42, help="Scenario seed.")
+    parser.add_argument("--seed", type=int, default=190, help="Scenario seed.")
     return parser.parse_args()
 
 

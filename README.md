@@ -160,20 +160,34 @@ Terminal: `0.7 × trajectory_grade + 0.3 × harvest_timing_signal`. All step rew
 
 ## Baseline Scores (seed=42)
 
-| | Oracle Ceiling | Greedy Baseline |
-|---|---|---|
-| **Info** | Full simulator state | Public observation only |
-| **Strategy** | Thermal-sum lookahead, exact N-deficit tracking | Simple threshold rules on visible data |
+| | Oracle Ceiling | Llama 3.3 70B | Greedy(Heuristic Baseline) |
+|---|---|---|---|
+| **Info** | Full simulator state | NL observations + LLM reasoning | Public observation only |
+| **Strategy** | Thermal-sum lookahead, exact N-deficit tracking | Prompt-based crop management decisions | Simple threshold rules on visible data |
 
-| Task | Oracle | Greedy | Gap |
-|------|--------|--------|-----|
-| 1 (Easy) | 0.9593 | 0.9588 | 0.0005 |
-| 2 (Medium) | 0.9409 | 0.5298 | 0.4111 |
-| 3 (Hard) | 0.9067 | 0.4224 | 0.4843 |
+| Task | Oracle | Llama 3.3 70B | Greedy(Heuristic Baseline) | LLM vs Greedy |
+|------|--------|---------------|--------|---------------|
+| 1 (Easy) | 0.959 | 0.941 | 0.959 | −0.018 |
+| 2 (Medium) | 0.941 | 0.885 | 0.530 | +0.355 |
+| 3 (Hard) | 0.907 | 0.780 | 0.422 | +0.358 |
+| **Average** | **0.936** | **0.869** | **0.637** | **+0.232** |
 
 On Task 1 (full observability), the greedy heuristic nearly matches the oracle. On Tasks 2–3, the gap widens dramatically — this is the **observability challenge** where LLM reasoning over NL cues and strategic inspection can outperform the blind heuristic.
 
 A **do-nothing policy** scores 0.37 / 0.35 / 0.17 — anti-passivity calibration ensures agents must act.
+
+### LLM Agent Comparison (seed=190)
+
+Seed 190 selected for maximum oracle action diversity — it triggers all 5 action types (`wait`, `fertilize`, `fertilize_slow`, `irrigate`, `harvest`) across the 3 tasks, including 2 irrigations in Task 3 (most seeds require 0–1).
+
+| Task | Oracle | Llama 3.3 70B | Greedy(Heuristic Baseline) | LLM vs Greedy |
+|------|--------|---------------|--------|---------------|
+| 1 (Easy) | 0.940 | 0.847 | 0.846 | +0.001 |
+| 2 (Medium) | 0.922 | 0.868 | 0.528 | +0.340 |
+| 3 (Hard) | 0.857 | 0.680 | 0.405 | +0.275 |
+| **Average** | **0.906** | **0.798** | **0.593** | **+0.205** |
+
+The LLM agent outperforms greedy by **+34% on average**, demonstrating that LLM reasoning over NL observations, weather forecasts, and budget constraints adds substantial value — especially on the harder tasks where observability is limited.
 
 ---
 
@@ -259,8 +273,8 @@ uvicorn server.app:app --host 0.0.0.0 --port 7860
 ```bash
 curl http://localhost:7860/health    # {"status": "healthy"}
 curl http://localhost:7860/tasks     # List all 3 tasks
-curl http://localhost:7860/baseline  # Greedy scores (seed=42)
-curl http://localhost:7860/ceiling   # Oracle scores (seed=42)
+curl http://localhost:7860/baseline  # Greedy scores (seed=190)
+curl http://localhost:7860/ceiling   # Oracle scores (seed=190)
 ```
 
 ---
@@ -306,7 +320,7 @@ TRAJECTORY_OUTPUT=trajectories/run python inference.py
 | `HF_TOKEN` | No | Fallback for `API_KEY` |
 | `ENV_URL` | No | Server URL (default: `http://localhost:7860`) |
 | `TASK_ID` | No | Single task ID (default: all 3) |
-| `SEED` | No | Random seed (default: 42) |
+| `SEED` | No | Random seed (default: 190) |
 | `TRAJECTORY_OUTPUT` | No | JSONL export path for offline RL |
 
 ---
@@ -355,7 +369,7 @@ bash scripts/validate-submission.sh https://rijulgn-crop-management-env.hf.space
 ```bash
 python -m pytest tests/test_smoke.py -q          # 65 smoke/RL/rubric tests
 python -m pytest tests/ -q                        # all 82 tests
-python -m agent.benchmark_sweep --start-seed 42 --count 10  # multi-seed sweep
+python -m agent.benchmark_sweep --start-seed 190 --count 10  # multi-seed sweep
 python examples/direct_benchmark.py               # minimal oracle benchmark
 ```
 

@@ -82,8 +82,8 @@ All models use Pydantic `BaseModel` with `extra="forbid"` and inherit from OpenE
 - Custom endpoints:
   - `/tasks` (GET) — lists available task definitions
   - `/grader` (POST) — grades an episode given metrics: returns `{score, breakdown}`
-  - `/baseline` (GET) — deterministic greedy baseline scores for all tasks (seed=42, cached)
-  - `/ceiling` (GET) — deterministic oracle ceiling scores for all tasks (seed=42, cached)
+  - `/baseline` (GET) — deterministic greedy baseline scores for all tasks (seed=190, cached)
+  - `/ceiling` (GET) — deterministic oracle ceiling scores for all tasks (seed=190, cached)
 - Entry point: `uvicorn server.app:app --host 0.0.0.0 --port 7860`
 
 ### 3.3 Environment Interface — `server/environment.py`
@@ -284,13 +284,13 @@ prevent reaching 1.0:
 | 50 kg/ha per-step fertilizer cap | Split across 2 applications | No — hard environment cap |
 | Heat stress (Punjab: 35°C threshold) | Up to −70% reproductive growth | No — environmental |
 
-**Oracle scores (seed=42):**
+**Oracle scores (seed=190):**
 
 | Task | Score | Timing | Yield | Cost |
 |------|-------|--------|-------|------|
-| 1 (NL, tier 1) | 0.9593 | 0.975 | 0.951 | 0.847 |
-| 2 (Iowa, tier 2) | 0.9409 | 0.952 | 0.949 | 0.728 |
-| 3 (Punjab, tier 3) | 0.9067 | 1.000 | 0.937 | 0.550 |
+| 1 (NL, tier 1) | 0.940 | — | — | — |
+| 2 (Iowa, tier 2) | 0.922 | — | — | — |
+| 3 (Punjab, tier 3) | 0.857 | — | — | — |
 
 ### 3.11 Step Reward Alignment with Oracle
 
@@ -329,11 +329,11 @@ Multi-seed evaluation utility that runs the oracle policy directly against `Crop
 ### 4.1 Reset Pipeline
 
 ```
-Agent calls reset(seed=42, task_id=1)
+Agent calls reset(seed=190, task_id=1)
   │
   ▼
 CropEnvironment.reset()
-  ├── generate_scenario(seed=42, task_id=1)  ← scenarios.py
+  ├── generate_scenario(seed=190, task_id=1)  ← scenarios.py
   │     ├── select location (Netherlands for task 1)
   │     ├── generate deterministic weather (seed × 31)
   │     ├── compute location-specific target yield
@@ -501,8 +501,8 @@ MetaHackathonPrep/
 | `/ws` | WebSocket | Multi-step episode (preferred) |
 | `/tasks` | GET | Custom: list task definitions |
 | `/grader` | POST | Custom: grade an episode → `{score, breakdown}` |
-| `/baseline` | GET | Custom: greedy baseline scores for all tasks (seed=42, cached) |
-| `/ceiling` | GET | Custom: oracle ceiling scores for all tasks (seed=42, cached) |
+| `/baseline` | GET | Custom: greedy baseline scores for all tasks (seed=190, cached) |
+| `/ceiling` | GET | Custom: oracle ceiling scores for all tasks (seed=190, cached) |
 
 ### Compliance Checklist
 
@@ -655,12 +655,12 @@ Provided by `CropManagementRubric` (in `server/rubric.py`), a thin wrapper aroun
 
 ### Key Metrics (Current Baseline)
 
-| Task | Greedy Score (seed=42) | Oracle Score (seed=42) |
+| Task | Greedy Score (seed=190) | Oracle Score (seed=190) |
 |------|----------------------|----------------------|
-| 1 (Easy) | 0.9588 | 0.9593 |
-| 2 (Medium) | 0.5298 | 0.9409 |
-| 3 (Hard) | 0.4224 | 0.9067 |
-| **Overall** | **0.6370** | **0.9356** |
+| 1 (Easy) | 0.846 | 0.940 |
+| 2 (Medium) | 0.528 | 0.922 |
+| 3 (Hard) | 0.405 | 0.857 |
+| **Overall** | **0.593** | **0.906** |
 
 ---
 

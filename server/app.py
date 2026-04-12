@@ -96,7 +96,7 @@ _ceiling_cache: dict | None = None
 
 @app.get("/baseline")
 def run_baseline():
-    """Return deterministic greedy-baseline scores for all tasks (seed=42).
+    """Return deterministic greedy-baseline scores for all tasks (seed=190).
 
     Results are cached after first computation since they are fully
     deterministic — same seed + same greedy policy = same scores.
@@ -110,7 +110,7 @@ def run_baseline():
     results = {}
     for task_id in sorted(TASKS.keys()):
         env = CropEnvironment()
-        obs = env.reset(seed=42, task_id=task_id)
+        obs = env.reset(seed=190, task_id=task_id)
         steps = 0
         while not obs.done:
             action = CropAction(**greedy_action(obs, {}))
@@ -125,7 +125,7 @@ def run_baseline():
 
     scores = [r["score"] for r in results.values()]
     _baseline_cache = {
-        "seed": 42,
+        "seed": 190,
         "policy": "greedy",
         "tasks": results,
         "overall_mean": round(sum(scores) / len(scores), 4),
@@ -135,7 +135,7 @@ def run_baseline():
 
 @app.get("/ceiling")
 def run_ceiling():
-    """Return deterministic oracle-ceiling scores for all tasks (seed=42)."""
+    """Return deterministic oracle-ceiling scores for all tasks (seed=190)."""
     global _ceiling_cache
     if _ceiling_cache is not None:
         return _ceiling_cache
@@ -143,7 +143,7 @@ def run_ceiling():
     results = {}
     for task_id in sorted(TASKS.keys()):
         env = CropEnvironment()
-        obs = env.reset(seed=42, task_id=task_id)
+        obs = env.reset(seed=190, task_id=task_id)
         steps = 0
         while not obs.done:
             action = CropAction(**env.oracle_reference_action())
@@ -158,7 +158,7 @@ def run_ceiling():
 
     scores = [r["score"] for r in results.values()]
     _ceiling_cache = {
-        "seed": 42,
+        "seed": 190,
         "policy": "oracle_ceiling",
         "tasks": results,
         "overall_mean": round(sum(scores) / len(scores), 4),

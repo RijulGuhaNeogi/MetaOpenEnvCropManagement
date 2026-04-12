@@ -67,7 +67,7 @@ def test_baseline_endpoint(client):
     response = client.get("/baseline")
     assert response.status_code == 200
     data = response.json()
-    assert data["seed"] == 42
+    assert data["seed"] == 190
     assert data["policy"] == "greedy"
     assert "tasks" in data
     assert "overall_mean" in data
@@ -91,7 +91,7 @@ def test_ceiling_endpoint(client):
     response = client.get("/ceiling")
     assert response.status_code == 200
     data = response.json()
-    assert data["seed"] == 42
+    assert data["seed"] == 190
     assert data["policy"] == "oracle_ceiling"
     assert len(data["tasks"]) == 3
     for task_result in data["tasks"].values():

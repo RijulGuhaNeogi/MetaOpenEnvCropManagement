@@ -83,7 +83,7 @@ class CropEnvironment(
         task_id: int = kwargs.get("task_id", 1)
         probe_name: Optional[str] = kwargs.get("probe_name")
         task = get_task_definition(task_id)
-        actual_seed = seed if seed is not None else 42
+        actual_seed = seed if seed is not None else 190
 
         scenario = (
             generate_probe_scenario(actual_seed, probe_name)

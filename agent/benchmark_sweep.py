@@ -24,8 +24,8 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--start-seed",
         type=int,
-        default=42,
-        help="First seed in the sweep (default: 42).",
+        default=190,
+        help="First seed in the sweep (default: 190).",
     )
     parser.add_argument(
         "--count",

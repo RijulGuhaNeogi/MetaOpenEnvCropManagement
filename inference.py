@@ -20,7 +20,7 @@ ENV VARS (set by the evaluator):
     MODEL_NAME     Model identifier (e.g. "nvidia/llama-3.1-nemotron-70b-instruct").
     ENV_URL        Crop management server URL (default: http://localhost:7860).
     TASK_ID        Run a single task (1, 2, or 3). Empty = run all.
-    SEED           Random seed (default: 42).
+    SEED           Random seed (default: 190).
 
 STDOUT FORMAT (required by OpenEnv):
     [START] task=<task_name> env=crop_management model=<model_name>
@@ -56,7 +56,7 @@ API_BASE_URL = os.getenv("API_BASE_URL") or "https://router.huggingface.co/v1"
 MODEL_NAME = os.getenv("MODEL_NAME") or "Qwen/Qwen2.5-72B-Instruct"
 ENV_URL = os.getenv("ENV_URL", "http://localhost:7860")
 TASK_ID = os.getenv("TASK_ID", "")  # empty = run all 3 tasks
-SEED = int(os.getenv("SEED", "42"))
+SEED = int(os.getenv("SEED", "190"))
 BENCHMARK = "crop_management"
 SUCCESS_THRESHOLD = 0.1
 TRAJECTORY_OUTPUT = os.getenv("TRAJECTORY_OUTPUT", "")
