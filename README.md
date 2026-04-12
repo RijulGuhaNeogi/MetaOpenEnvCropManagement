@@ -177,12 +177,19 @@ Terminal: `0.7 × trajectory_grade + 0.3 × harvest_timing_signal`. All step rew
 
 ---
 
-## Baseline Scores (seed=42)
+## 3 Baseline Comparison
+
+Three baselines bracket the difficulty range. The **Oracle** is a perfect-information ceiling — it has direct access to the full simulator state (exact DVS, soil moisture, N-factor, and complete 7-day weather forecast), uses thermal-sum lookahead to predict future crop development, and tracks nitrogen deficits exactly. No real agent can match it; it defines the best possible score. The **Greedy heuristic** uses only the public observation surface (bands, advisories, reports) with simple threshold rules. The **LLM agent** reads the same NL observations as a human would and reasons over them.
+
 
 | | Oracle Ceiling | Llama 3.3 70B | Greedy(Heuristic Baseline) |
 |---|---|---|---|
 | **Info** | Full simulator state | NL observations + LLM reasoning | Public observation only |
 | **Strategy** | Thermal-sum lookahead, exact N-deficit tracking | Prompt-based crop management decisions | Simple threshold rules on visible data |
+
+---
+
+## LLM Agent Comparison (seed=42)
 
 | Task | Oracle | Llama 3.3 70B | Greedy(Heuristic Baseline) | LLM vs Greedy |
 |------|--------|---------------|--------|---------------|
@@ -246,7 +253,6 @@ Each row removes one mechanic from the oracle policy. Score drops prove design d
 - **Fertilization is critical** — removing it drops score by 0.295 (32%). Both timing windows matter.
 - **Irrigation matters most on Task 3** (Punjab, arid) — 0.119 drop vs near-zero impact on Tasks 1–2. The environment correctly makes irrigation important only where climate demands it.
 - **Slow-release shows +0.001** — the oracle already avoids fertilizing before rain, so it rarely needs leach protection. But a naive agent that ignores weather loses ~0.06 (visible in greedy's Task 2–3 gap). The mechanic differentiates good reasoning from bad.
-- **Greedy → Oracle gap is 0.297** — almost identical to the no-fertilization penalty, confirming partial observability (not action selection) is the primary challenge.
 - **Passive policy scores 0.280** — anti-passivity calibration works; doing nothing earns <31% of oracle.
 
 ---
