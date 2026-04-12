@@ -4,6 +4,13 @@ Generates weather data, crop/soil parameters, and budget constraints
 programmatically. Same seed always produces the same scenario.
 No external API calls or data files — fully self-contained.
 
+Seed parameter: any integer (Python's random.Random accepts any hashable).
+Each task uses a unique prime-multiplied derivative of the seed to ensure
+different weather even with the same seed:
+  - Task 1 (Netherlands): seed * 31 + 1
+  - Task 2 (Iowa):        seed * 37 + 2
+  - Task 3 (Punjab):      seed * 41 + 3
+
 Crop and soil parameters are loaded from YAML config files under configs/.
 If a YAML file is missing, the hardcoded profiles in crop_params.py are
 used as a fallback.

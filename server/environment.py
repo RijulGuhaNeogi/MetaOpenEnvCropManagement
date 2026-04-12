@@ -83,6 +83,12 @@ class CropEnvironment(
         task_id: int = kwargs.get("task_id", 1)
         probe_name: Optional[str] = kwargs.get("probe_name")
         task = get_task_definition(task_id)
+        # Seed controls deterministic weather generation. Any integer works
+        # (Python's random.Random accepts any hashable). Each task derives a
+        # unique weather series: seed*31+1 (NL), seed*37+2 (Iowa), seed*41+3
+        # (Punjab), so different tasks always get different weather even with
+        # the same seed. The judge passes their own seed via /reset; 190 is
+        # the local-dev fallback (chosen for maximum oracle action diversity).
         actual_seed = seed if seed is not None else 190
 
         scenario = (
